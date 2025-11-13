@@ -95,3 +95,11 @@ Sau khi tạo thành công và có Client ID + Client Secret:
 2. Khởi động lại container
 3. Test đăng nhập bằng Google
 
+
+
+
+
+
+
+
+

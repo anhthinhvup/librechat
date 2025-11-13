@@ -253,6 +253,33 @@ export const useRegisterUserMutation = (
   );
 };
 
+export const useSendPhoneVerificationOTPMutation = (
+  options?: m.PhoneVerificationOptions,
+): UseMutationResult<t.TError, unknown, t.TSendPhoneVerificationOTP, unknown> => {
+  return useMutation<t.PhoneVerificationResponse, t.TError, t.TSendPhoneVerificationOTP>(
+    (payload: t.TSendPhoneVerificationOTP) => dataService.sendPhoneVerificationOTP(payload),
+    options,
+  );
+};
+
+export const useVerifyPhoneOTPMutation = (
+  options?: m.PhoneVerificationOptions,
+): UseMutationResult<t.TError, unknown, t.TVerifyPhoneOTP, unknown> => {
+  const queryClient = useQueryClient();
+  return useMutation<t.PhoneVerificationResponse, t.TError, t.TVerifyPhoneOTP>(
+    (payload: t.TVerifyPhoneOTP) => dataService.verifyPhoneOTP(payload),
+    {
+      ...options,
+      onSuccess: (...args) => {
+        queryClient.invalidateQueries([QueryKeys.user]);
+        if (options?.onSuccess) {
+          options.onSuccess(...args);
+        }
+      },
+    },
+  );
+};
+
 export const useUserKeyQuery = (
   name: string,
   config?: UseQueryOptions<t.TCheckUserKeyResponse>,

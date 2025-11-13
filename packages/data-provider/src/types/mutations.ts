@@ -264,6 +264,10 @@ export type RegistrationOptions = MutationOptions<
   unknown,
   types.TError
 >;
+export type PhoneVerificationOptions = MutationOptions<
+  types.PhoneVerificationResponse,
+  types.TSendPhoneVerificationOTP | types.TVerifyPhoneOTP
+>;
 
 export type UpdatePermVars<T> = {
   roleName: string;

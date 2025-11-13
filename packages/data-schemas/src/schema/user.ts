@@ -46,6 +46,24 @@ const userSchema = new Schema<IUser>(
       required: true,
       default: false,
     },
+    phone: {
+      type: String,
+      sparse: true,
+      unique: true,
+      index: true,
+    },
+    phoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    phoneVerificationCode: {
+      type: String,
+      select: false,
+    },
+    phoneVerificationExpires: {
+      type: Date,
+      select: false,
+    },
     password: {
       type: String,
       trim: true,

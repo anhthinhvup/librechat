@@ -106,7 +106,7 @@ docker-compose logs -f api
 **QUAN TRỌNG**: Cần cập nhật Google OAuth redirect URI:
 
 1. Vào: https://console.cloud.google.com/apis/credentials
-2. Mở OAuth Client ID: `485772400461-dt81m035g7e106m1s76nkap7kijhg51u.apps.googleusercontent.com`
+2. Mở OAuth Client ID: `YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com`
 3. Trong "Authorized redirect URIs", thêm:
    ```
    https://chat.daydemy.com/oauth/google/callback

@@ -137,6 +137,18 @@ export const resendVerificationEmail = (
   return request.post(endpoints.resendVerificationEmail(), payload);
 };
 
+export const sendPhoneVerificationOTP = (
+  payload: t.TSendPhoneVerificationOTP,
+): Promise<t.PhoneVerificationResponse> => {
+  return request.post(endpoints.sendPhoneVerificationOTP(), payload);
+};
+
+export const verifyPhoneOTP = (
+  payload: t.TVerifyPhoneOTP,
+): Promise<t.PhoneVerificationResponse> => {
+  return request.post(endpoints.verifyPhoneOTP(), payload);
+};
+
 export const getAvailablePlugins = (): Promise<s.TPlugin[]> => {
   return request.get(endpoints.plugins());
 };

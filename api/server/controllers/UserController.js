@@ -21,6 +21,7 @@ const {
 const { updateUserPluginAuth, deleteUserPluginAuth } = require('~/server/services/PluginService');
 const { updateUserPluginsService, deleteUserKey } = require('~/server/services/UserService');
 const { verifyEmail, resendVerificationEmail } = require('~/server/services/AuthService');
+const { sendPhoneVerificationOTP, verifyPhoneOTP } = require('~/server/services/PhoneVerificationService');
 const { needsRefresh, getNewS3URL } = require('~/server/services/Files/S3/crud');
 const { processDeleteRequest } = require('~/server/services/Files/process');
 const { Transaction, Balance, User, Token } = require('~/db/models');
@@ -285,6 +286,26 @@ const resendVerificationController = async (req, res) => {
   }
 };
 
+const sendPhoneVerificationController = async (req, res) => {
+  try {
+    const result = await sendPhoneVerificationOTP(req);
+    return res.status(result.status).json({ message: result.message });
+  } catch (e) {
+    logger.error('[sendPhoneVerificationController]', e);
+    return res.status(500).json({ message: 'Something went wrong.' });
+  }
+};
+
+const verifyPhoneController = async (req, res) => {
+  try {
+    const result = await verifyPhoneOTP(req);
+    return res.status(result.status).json({ message: result.message });
+  } catch (e) {
+    logger.error('[verifyPhoneController]', e);
+    return res.status(500).json({ message: 'Something went wrong.' });
+  }
+};
+
 /**
  * OAuth MCP specific uninstall logic
  */
@@ -394,4 +415,6 @@ module.exports = {
   verifyEmailController,
   updateUserPluginsController,
   resendVerificationController,
+  sendPhoneVerificationController,
+  verifyPhoneController,
 };

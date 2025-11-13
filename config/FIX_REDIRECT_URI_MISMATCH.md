@@ -16,7 +16,7 @@ Google Cloud Console chưa có redirect URI `http://localhost:3080/oauth/google/
 2. Đảm bảo bạn đã chọn đúng project (project chứa OAuth client ID của bạn)
 
 ### Bước 2: Mở OAuth Client ID
-1. Tìm OAuth client ID bạn đã tạo (có Client ID: `485772400461-dt81m035g7e106m1s76nkap7kijhg51u.apps.googleusercontent.com`)
+1. Tìm OAuth client ID bạn đã tạo (có Client ID: `YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com`)
 2. Click vào tên của OAuth client ID để mở cấu hình
 
 ### Bước 3: Thêm Authorized redirect URI
@@ -77,8 +77,8 @@ Các biến môi trường sau phải được cấu hình đúng trong `.env`:
 ```env
 DOMAIN_SERVER=http://localhost:3080
 GOOGLE_CALLBACK_URL=/oauth/google/callback
-GOOGLE_CLIENT_ID=485772400461-dt81m035g7e106m1s76nkap7kijhg51u.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=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
+GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
 ALLOW_REGISTRATION=true
 ALLOW_SOCIAL_LOGIN=true
 ALLOW_SOCIAL_REGISTRATION=true
@@ -128,4 +128,12 @@ Vì vậy callback URL sẽ là: `DOMAIN_SERVER + GOOGLE_CALLBACK_URL = http://l
 - Google Cloud Console Credentials: https://console.cloud.google.com/apis/credentials
 - Google OAuth Consent Screen: https://console.cloud.google.com/apis/credentials/consent
 - Google OAuth 2.0 Documentation: https://developers.google.com/identity/protocols/oauth2
+
+
+
+
+
+
+
+
 

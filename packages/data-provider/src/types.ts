@@ -200,6 +200,8 @@ export type TUser = {
   plugins?: string[];
   twoFactorEnabled?: boolean;
   backupCodes?: TBackupCode[];
+  phone?: string;
+  phoneVerified?: boolean;
   personalization?: {
     memories?: boolean;
   };
@@ -467,6 +469,17 @@ export type TVerifyEmail = {
 };
 
 export type TResendVerificationEmail = Omit<TVerifyEmail, 'token'>;
+
+export type PhoneVerificationResponse = { message: string };
+
+export type TSendPhoneVerificationOTP = {
+  phone: string;
+};
+
+export type TVerifyPhoneOTP = {
+  phone: string;
+  code: string;
+};
 
 export type TRefreshTokenResponse = {
   token: string;

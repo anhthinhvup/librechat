@@ -70,3 +70,11 @@ docker-compose exec api env | grep GOOGLE_CLIENT
 2. **Redirect URI**: Phải chính xác `http://localhost:3080/api/oauth/google/callback`
 3. **Cả hai credentials đều cần**: Cần cả `GOOGLE_CLIENT_ID` VÀ `GOOGLE_CLIENT_SECRET`
 
+
+
+
+
+
+
+
+

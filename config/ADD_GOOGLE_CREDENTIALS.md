@@ -136,3 +136,11 @@ Vì app chưa được verify, bạn cần:
 - [ ] Đã refresh trang đăng ký
 - [ ] Nút "Continue with Google" đã hiển thị
 
+
+
+
+
+
+
+
+

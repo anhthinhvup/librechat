@@ -123,3 +123,11 @@ echo "2. Check logs: docker-compose logs -f api"
 echo "3. Test: curl http://localhost:3080/api/health"
 echo "==========================================${NC}"
 
+
+
+
+
+
+
+
+
