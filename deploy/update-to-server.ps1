@@ -26,7 +26,8 @@ Write-Host "`nDang commit..." -ForegroundColor Cyan
 git commit -m $message
 
 Write-Host "`nDang push len GitHub..." -ForegroundColor Cyan
-git push origin main
+$branch = git rev-parse --abbrev-ref HEAD
+git push origin $branch
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n[OK] Da push code len GitHub thanh cong!" -ForegroundColor Green
