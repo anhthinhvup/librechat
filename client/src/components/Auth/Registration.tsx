@@ -72,7 +72,7 @@ const Registration: React.FC = () => {
           autoComplete={id}
           aria-label={localize(label)}
           {...register(
-            id as 'name' | 'email' | 'username' | 'password' | 'confirm_password',
+            id as 'name' | 'email' | 'username' | 'password' | 'confirm_password' | 'phone',
             validation,
           )}
           aria-invalid={!!errors[id]}
@@ -160,6 +160,13 @@ const Registration: React.FC = () => {
               pattern: {
                 value: /\S+@\S+\.\S+/,
                 message: localize('com_auth_email_pattern'),
+              },
+            })}
+            {renderInput('phone', 'com_auth_phone', 'tel', {
+              required: false,
+              pattern: {
+                value: /^\+?[1-9]\d{1,14}$/,
+                message: 'Invalid phone format. Use: +1234567890',
               },
             })}
             {renderInput('password', 'com_auth_password', 'password', {

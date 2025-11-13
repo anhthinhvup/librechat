@@ -176,7 +176,7 @@ const registerUser = async (user, additionalData = {}) => {
     return { status: 404, message: errorMessage };
   }
 
-  const { email, password, name, username } = user;
+  const { email, password, name, username, phone } = user;
 
   let newUserId;
   try {
@@ -202,6 +202,15 @@ const registerUser = async (user, additionalData = {}) => {
       return { status: 200, message: genericVerificationMessage };
     }
 
+    // Check if phone is already used (if provided)
+    if (phone) {
+      const existingPhoneUser = await findUser({ phone }, 'phone _id');
+      if (existingPhoneUser) {
+        logger.warn(`[registerUser] [Phone already in use] [Phone: ${phone}]`);
+        return { status: 400, message: 'Phone number already in use' };
+      }
+    }
+
     //determine if this is the first registered user (not counting anonymous_user)
     const isFirstRegisteredUser = (await countUsers()) === 0;
 
@@ -214,6 +223,8 @@ const registerUser = async (user, additionalData = {}) => {
       avatar: null,
       role: isFirstRegisteredUser ? SystemRoles.ADMIN : SystemRoles.USER,
       password: bcrypt.hashSync(password, salt),
+      phone: phone || null,
+      phoneVerified: false,
       ...additionalData,
     };
 

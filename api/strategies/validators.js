@@ -64,6 +64,19 @@ const registerSchema = z
       .refine((value) => value.trim().length > 0, {
         message: 'Password cannot be only spaces',
       }),
+    phone: z
+      .string()
+      .regex(/^\+?[1-9]\d{1,14}$/, {
+        message: 'Invalid phone number format. Use format: +1234567890',
+      })
+      .optional()
+      .nullable()
+      .transform((value) => {
+        if (!value || value.trim() === '') return null;
+        // Normalize phone number
+        const normalized = value.replace(/\s/g, '');
+        return normalized.startsWith('+') ? normalized : `+${normalized}`;
+      }),
   })
   .superRefine(({ confirm_password, password }, ctx) => {
     if (confirm_password !== password) {
