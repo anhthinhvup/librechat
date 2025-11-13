@@ -21,9 +21,9 @@ fi
 
 # Bước 2: Clone từ GitHub
 echo "Đang clone từ GitHub..."
-cd /opt
+cd /opt || exit 1
 git clone https://github.com/anhthinhvup/librechat.git librechat
-cd librechat
+cd /opt/librechat || exit 1
 
 # Bước 3: Setup Git workflow
 echo "Đang setup Git workflow..."
@@ -34,15 +34,15 @@ echo "Đang tạo file .env..."
 if [ ! -f ".env" ]; then
     cp deploy/env.production .env
     
-    # Generate secrets
-    MEILI_KEY=$(openssl rand -base64 32 | tr -d '\n')
-    sed -i "s/MEILI_MASTER_KEY=CHANGE_THIS_TO_SECURE_RANDOM_STRING/MEILI_MASTER_KEY=$MEILI_KEY/" .env
+    # Generate secrets (escape special characters for sed)
+    MEILI_KEY=$(openssl rand -base64 32 | tr -d '\n' | sed 's/[\/&]/\\&/g')
+    sed -i "s|MEILI_MASTER_KEY=CHANGE_THIS_TO_SECURE_RANDOM_STRING|MEILI_MASTER_KEY=${MEILI_KEY}|" .env
     
-    JWT_SEC=$(openssl rand -base64 32 | tr -d '\n')
-    sed -i "s/JWT_SECRET=CHANGE_THIS_TO_SECURE_RANDOM_STRING/JWT_SECRET=$JWT_SEC/" .env
+    JWT_SEC=$(openssl rand -base64 32 | tr -d '\n' | sed 's/[\/&]/\\&/g')
+    sed -i "s|JWT_SECRET=CHANGE_THIS_TO_SECURE_RANDOM_STRING|JWT_SECRET=${JWT_SEC}|" .env
     
-    JWT_REFRESH=$(openssl rand -base64 32 | tr -d '\n')
-    sed -i "s/JWT_REFRESH_SECRET=CHANGE_THIS_TO_SECURE_RANDOM_STRING/JWT_REFRESH_SECRET=$JWT_REFRESH/" .env
+    JWT_REFRESH=$(openssl rand -base64 32 | tr -d '\n' | sed 's/[\/&]/\\&/g')
+    sed -i "s|JWT_REFRESH_SECRET=CHANGE_THIS_TO_SECURE_RANDOM_STRING|JWT_REFRESH_SECRET=${JWT_REFRESH}|" .env
     
     echo "✓ Đã tạo .env với secrets đã generate"
     echo "⚠️  Cần cập nhật Google OAuth credentials trong .env"
