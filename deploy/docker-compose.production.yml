@@ -1,0 +1,104 @@
+# Docker Compose Configuration for Production on Hetzner
+# This configuration runs LibreChat on port 3080 (internal, localhost only)
+# Nginx reverse proxy on the host will route traffic from domain to this port
+# 
+# Usage: docker-compose -f docker-compose.production.yml up -d
+
+services:
+  api:
+    container_name: LibreChat-API
+    image: ghcr.io/danny-avila/librechat-dev-api:latest
+    ports:
+      - "127.0.0.1:3080:3080"  # Only expose on localhost, Nginx will proxy from domain
+    depends_on:
+      - mongodb
+      - rag_api
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/LibreChat
+      - MEILI_HOST=http://meilisearch:7700
+      - RAG_PORT=${RAG_PORT:-8000}
+      - RAG_API_URL=http://rag_api:${RAG_PORT:-8000}
+    volumes:
+      - type: bind
+        source: ./librechat.yaml
+        target: /app/librechat.yaml
+      - ./images:/app/client/public/images
+      - ./uploads:/app/uploads
+      - ./logs:/app/api/logs
+    networks:
+      - librechat-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3080/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mongodb:
+    container_name: chat-mongodb
+    image: mongo:latest
+    restart: always
+    volumes:
+      - ./data-node:/data/db
+    command: mongod --noauth
+    networks:
+      - librechat-network
+    # Do not expose ports to host for security
+
+  meilisearch:
+    container_name: chat-meilisearch
+    image: getmeili/meilisearch:v1.12.3
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - ./meili_data_v1.12:/meili_data
+    networks:
+      - librechat-network
+    # Do not expose ports to host for security
+
+  vectordb:
+    container_name: vectordb
+    image: pgvector/pgvector:0.8.0-pg15-trixie
+    environment:
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    restart: always
+    volumes:
+      - pgdata2:/var/lib/postgresql/data
+    networks:
+      - librechat-network
+    # Do not expose ports to host for security
+
+  rag_api:
+    container_name: rag_api
+    image: ghcr.io/danny-avila/librechat-rag-api-dev-lite:latest
+    environment:
+      - DB_HOST=vectordb
+      - RAG_PORT=${RAG_PORT:-8000}
+    restart: always
+    depends_on:
+      - vectordb
+    env_file:
+      - .env
+    networks:
+      - librechat-network
+    # Do not expose ports to host for security
+
+networks:
+  librechat-network:
+    driver: bridge
+
+volumes:
+  pgdata2:
