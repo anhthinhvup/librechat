@@ -6,8 +6,9 @@ echo "=== Cập nhật code trên server ==="
 
 cd /opt/librechat || exit
 
-echo "Đang pull code mới từ GitHub..."
-git pull origin main
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "Đang pull code mới từ GitHub (branch: $BRANCH)..."
+git pull origin $BRANCH
 
 if [ $? -ne 0 ]; then
     echo "✗ Có lỗi khi pull code!"
