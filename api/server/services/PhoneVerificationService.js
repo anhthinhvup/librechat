@@ -1,5 +1,6 @@
 const { logger } = require('@librechat/data-schemas');
 const { findUser, updateUser } = require('~/models');
+const { sendSMS } = require('./SMSService');
 const crypto = require('crypto');
 
 /**
@@ -45,22 +46,38 @@ const sendPhoneVerificationOTP = async (req) => {
       phoneVerified: false,
     });
 
-    // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
-    // For now, log the OTP (in production, send via SMS)
-    logger.info(`[sendPhoneVerificationOTP] OTP for ${normalizedPhone}: ${otpCode}`);
-    
-    // In development, return OTP in response for testing
-    // In production, implement SMS sending here:
-    // await sendSMS(normalizedPhone, `Your verification code is: ${otpCode}`);
-    
-    const isDevelopment = process.env.NODE_ENV !== 'production';
-    const responseMessage = isDevelopment
-      ? `Verification code sent successfully. OTP: ${otpCode} (Development mode - check server logs in production)`
-      : 'Verification code sent successfully. Please check your phone.';
+    // Send OTP via SMS
+    const smsMessage = `Your ${process.env.APP_TITLE || 'LibreChat'} verification code is: ${otpCode}. This code expires in 10 minutes.`;
+    const smsResult = await sendSMS(normalizedPhone, smsMessage);
 
+    if (!smsResult.success) {
+      logger.error(`[sendPhoneVerificationOTP] Failed to send SMS: ${smsResult.error}`);
+      
+      // In development, still return success with OTP in response
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      if (isDevelopment) {
+        logger.warn(`[sendPhoneVerificationOTP] Development mode - OTP: ${otpCode}`);
+        return {
+          status: 200,
+          message: `Verification code generated. OTP: ${otpCode} (Development mode - SMS not configured)`,
+          otp: otpCode,
+        };
+      }
+
+      // In production, return error if SMS fails
+      return {
+        status: 500,
+        message: 'Failed to send verification code. Please try again later.',
+      };
+    }
+
+    logger.info(`[sendPhoneVerificationOTP] OTP sent successfully to ${normalizedPhone} via SMS`);
+
+    // In development, also include OTP in response for testing
+    const isDevelopment = process.env.NODE_ENV !== 'production';
     return {
       status: 200,
-      message: responseMessage,
+      message: 'Verification code sent successfully. Please check your phone.',
       ...(isDevelopment && { otp: otpCode }), // Include OTP in dev mode for testing
     };
   } catch (error) {
