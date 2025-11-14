@@ -26,6 +26,3 @@ router.post('/phone/send-otp', requireJwtAuth, sendPhoneVerificationController);
 router.post('/phone/verify', verifyPhoneController);
 
 module.exports = router;
-router.post('/phone/verify', requireJwtAuth, verifyPhoneController);
-
-module.exports = router;
