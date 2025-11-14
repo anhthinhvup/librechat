@@ -1,9 +1,13 @@
 import { useForm } from 'react-hook-form';
 import React, { useContext, useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
-import { ThemeContext, Spinner, Button, isDark } from '@librechat/client';
+import { ThemeContext, Spinner, Button, isDark, Input, useToastContext } from '@librechat/client';
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
 import { useRegisterUserMutation } from 'librechat-data-provider/react-query';
+import {
+  useSendPhoneVerificationOTPMutation,
+  useVerifyPhoneOTPMutation,
+} from '~/data-provider';
 import type { TRegisterUser, TError } from 'librechat-data-provider';
 import type { TLoginLayoutContext } from '~/common';
 import { useLocalize, TranslationKeys } from '~/hooks';
@@ -27,6 +31,11 @@ const Registration: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [countdown, setCountdown] = useState<number>(3);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [showPhoneVerification, setShowPhoneVerification] = useState<boolean>(false);
+  const [registeredPhone, setRegisteredPhone] = useState<string>('');
+  const [otpCode, setOtpCode] = useState<string>('');
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState<boolean>(false);
+  const { showToast } = useToastContext();
 
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
@@ -36,24 +45,50 @@ const Registration: React.FC = () => {
   // only require captcha if we have a siteKey
   const requireCaptcha = Boolean(startupConfig?.turnstile?.siteKey);
 
+  const { mutate: verifyOTPMutate } = useVerifyPhoneOTPMutation({
+    onSuccess: (data) => {
+      showToast({ message: data.message || 'Phone number verified successfully' });
+      setIsVerifyingOTP(false);
+      setShowPhoneVerification(false);
+      setOtpCode('');
+      // Navigate after verification
+      navigate('/c/new', { replace: true });
+    },
+    onError: (error: any) => {
+      showToast({
+        message: error?.message || 'Failed to verify phone number',
+        status: 'error',
+      });
+      setIsVerifyingOTP(false);
+    },
+  });
+
   const registerUser = useRegisterUserMutation({
     onMutate: () => {
       setIsSubmitting(true);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       setIsSubmitting(false);
-      setCountdown(3);
-      const timer = setInterval(() => {
-        setCountdown((prevCountdown) => {
-          if (prevCountdown <= 1) {
-            clearInterval(timer);
-            navigate('/c/new', { replace: true });
-            return 0;
-          } else {
-            return prevCountdown - 1;
-          }
-        });
-      }, 1000);
+      // If phone number was provided, show verification dialog
+      if (variables.phone && variables.phone.trim() !== '') {
+        setRegisteredPhone(variables.phone);
+        setShowPhoneVerification(true);
+        setCountdown(0); // Don't auto-redirect
+      } else {
+        // No phone, proceed with normal flow
+        setCountdown(3);
+        const timer = setInterval(() => {
+          setCountdown((prevCountdown) => {
+            if (prevCountdown <= 1) {
+              clearInterval(timer);
+              navigate('/c/new', { replace: true });
+              return 0;
+            } else {
+              return prevCountdown - 1;
+            }
+          });
+        }, 1000);
+      }
     },
     onError: (error: unknown) => {
       setIsSubmitting(false);
@@ -169,6 +204,44 @@ const Registration: React.FC = () => {
                 message: 'Invalid phone format. Use: +1234567890',
               },
             })}
+            {showPhoneVerification && (
+              <div className="mb-4 rounded-lg border border-blue-500 bg-blue-50 p-4 dark:bg-blue-900/20">
+                <p className="mb-2 text-sm font-medium text-blue-900 dark:text-blue-200">
+                  Verification code has been sent to {registeredPhone}
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit code"
+                    disabled={isVerifyingOTP}
+                    className="flex-1"
+                    maxLength={6}
+                  />
+                  <Button
+                    onClick={() => {
+                      if (otpCode.length !== 6) {
+                        showToast({ message: 'Please enter 6-digit code', status: 'error' });
+                        return;
+                      }
+                      setIsVerifyingOTP(true);
+                      verifyOTPMutate({
+                        phone: registeredPhone.replace(/\s/g, ''),
+                        code: otpCode,
+                      });
+                    }}
+                    disabled={isVerifyingOTP || otpCode.length !== 6}
+                    variant="default"
+                  >
+                    {isVerifyingOTP ? <Spinner /> : 'Verify'}
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs text-blue-700 dark:text-blue-300">
+                  Please check your phone for the verification code. The code expires in 10 minutes.
+                </p>
+              </div>
+            )}
             {renderInput('password', 'com_auth_password', 'password', {
               required: localize('com_auth_password_required'),
               minLength: {

@@ -248,6 +248,28 @@ const registerUser = async (user, additionalData = {}) => {
       await updateUser(newUserId, { emailVerified: true });
     }
 
+    // Auto-send phone verification OTP if phone number is provided
+    if (phone) {
+      try {
+        const { sendPhoneVerificationOTP } = require('~/server/services/PhoneVerificationService');
+        const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+        // Create a mock request object for sendPhoneVerificationOTP
+        const mockReq = {
+          user: { _id: newUserId },
+          body: { phone: normalizedPhone },
+        };
+        const otpResult = await sendPhoneVerificationOTP(mockReq);
+        if (otpResult.status === 200) {
+          logger.info(`[registerUser] Phone verification OTP sent to ${normalizedPhone} for new user`);
+        } else {
+          logger.warn(`[registerUser] Failed to send phone verification OTP: ${otpResult.message}`);
+        }
+      } catch (error) {
+        logger.error('[registerUser] Error sending phone verification OTP:', error);
+        // Don't fail registration if OTP sending fails
+      }
+    }
+
     return { status: 200, message: genericVerificationMessage };
   } catch (err) {
     logger.error('[registerUser] Error in registering user:', err);
