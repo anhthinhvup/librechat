@@ -1,8 +1,11 @@
 #!/bin/bash
-# Script để cấu hình Twilio trên server
+# Script để cấu hình Twilio SMS provider
 # Chạy: bash deploy/setup-twilio-on-server.sh
 
-cd /opt/librechat || exit 1
+# Tự động detect thư mục project
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
 
 echo "=== Cấu hình Twilio SMS ==="
 echo ""
@@ -50,13 +53,41 @@ TWILIO_AUTH_TOKEN=$TWILIO_AUTH_TOKEN
 TWILIO_PHONE_NUMBER=$TWILIO_PHONE
 EOF
 
+# Xóa cấu hình HTTP API và AWS nếu có (để tránh conflict)
+if grep -q "SMS_HTTP_API_URL" .env; then
+    echo "⚠️  Đang xóa cấu hình HTTP API cũ..."
+    sed -i '/^SMS_HTTP_/d' .env
+fi
+
+if grep -q "AWS_ACCESS_KEY_ID" .env; then
+    echo "⚠️  Đang xóa cấu hình AWS SNS cũ..."
+    sed -i '/^AWS_ACCESS_KEY_ID=/d' .env
+    sed -i '/^AWS_SECRET_ACCESS_KEY=/d' .env
+    sed -i '/^AWS_SNS_REGION=/d' .env
+fi
+
 echo ""
 echo "✅ Đã thêm cấu hình Twilio vào .env"
 echo ""
+echo "Thông tin đã cấu hình:"
+echo "  - Provider: Twilio"
+echo "  - Account SID: ${TWILIO_ACCOUNT_SID:0:10}..."
+echo "  - Phone Number: $TWILIO_PHONE"
+echo ""
 echo "⚠️  LƯU Ý: File .env chứa thông tin nhạy cảm, không commit vào git!"
 echo ""
+echo "📖 Lưu ý về Trial Account:"
+echo "  - Trial account chỉ gửi được SMS đến số đã verify"
+echo "  - Verify số tại: https://www.twilio.com/console/phone-numbers/verified"
+echo "  - Upgrade account để gửi đến bất kỳ số nào"
+echo ""
 echo "Bước tiếp theo:"
-echo "  1. Install dependencies: cd api && npm install && cd .."
-echo "  2. Build lại image: docker build -f Dockerfile.multi --target api-build -t librechat-api:local ."
-echo "  3. Restart: docker-compose down && docker-compose up -d"
-echo "  4. Kiểm tra logs: docker-compose logs -f api | grep SMSService"
+if command -v docker-compose &> /dev/null || command -v docker &> /dev/null; then
+    echo "  1. Restart API: docker-compose restart api"
+    echo "  2. Kiểm tra logs: docker-compose logs -f api | grep SMSService"
+else
+    echo "  1. Restart server: npm run backend:dev"
+    echo "  2. Kiểm tra logs để thấy: [SMSService] Twilio client initialized"
+fi
+echo ""
+echo "📖 Xem thêm hướng dẫn: deploy/TWILIO_SETUP.md"

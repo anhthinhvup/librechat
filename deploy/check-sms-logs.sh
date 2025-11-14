@@ -2,7 +2,46 @@
 # Script để kiểm tra SMS logs và cấu hình
 # Chạy: bash deploy/check-sms-logs.sh
 
-cd /opt/librechat || exit 1
+# Tự động tìm thư mục dự án
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Thử các thư mục phổ biến
+POSSIBLE_DIRS=(
+    "$PROJECT_ROOT"
+    "/opt/librechat"
+    "$HOME/librechat"
+    "$HOME/LibreChat-main"
+    "/var/www/librechat"
+)
+
+PROJECT_DIR=""
+
+for dir in "${POSSIBLE_DIRS[@]}"; do
+    if [ -f "$dir/docker-compose.yml" ]; then
+        PROJECT_DIR="$dir"
+        break
+    fi
+done
+
+# Nếu không tìm thấy, thử tìm bằng find
+if [ -z "$PROJECT_DIR" ]; then
+    FOUND_DIR=$(find /opt /home /var/www -name "docker-compose.yml" -path "*librechat*" 2>/dev/null | head -1 | xargs dirname)
+    if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/docker-compose.yml" ]; then
+        PROJECT_DIR="$FOUND_DIR"
+    fi
+fi
+
+if [ -z "$PROJECT_DIR" ]; then
+    echo "❌ Không tìm thấy thư mục dự án LibreChat"
+    echo "Hãy chạy script này từ thư mục có file docker-compose.yml"
+    echo "Hoặc cd vào thư mục dự án trước:"
+    echo "  cd /opt/librechat  # hoặc thư mục của bạn"
+    exit 1
+fi
+
+echo "✅ Tìm thấy thư mục dự án: $PROJECT_DIR"
+cd "$PROJECT_DIR" || exit 1
 
 echo "=== Kiểm tra SMS Configuration và Logs ==="
 echo ""
@@ -68,6 +107,10 @@ if ! grep -q "TWILIO_ACCOUNT_SID" .env 2>/dev/null; then
 fi
 
 echo "Để xem logs real-time khi đăng ký:"
+echo "  cd $PROJECT_DIR"
 echo "  docker-compose logs -f api | grep -E 'sendPhoneVerificationOTP|SMSService|OTP'"
+echo ""
+echo "Hoặc dùng lệnh này từ bất kỳ đâu:"
+echo "  docker logs -f LibreChat | grep -E 'sendPhoneVerificationOTP|SMSService|OTP'"
 echo ""
 

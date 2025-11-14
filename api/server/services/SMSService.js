@@ -1,4 +1,5 @@
 const { logger } = require('@librechat/data-schemas');
+const axios = require('axios');
 
 let twilioClient = null;
 let snsClient = null;
@@ -97,6 +98,135 @@ const sendViaTwilio = async (to, message) => {
 };
 
 /**
+ * Send SMS via HTTP API (Generic provider)
+ * Supports any SMS gateway with HTTP API
+ * @param {string} to - Phone number to send to (E.164 format)
+ * @param {string} message - Message content
+ * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
+ */
+const sendViaHTTP = async (to, message) => {
+  try {
+    const apiUrl = process.env.SMS_HTTP_API_URL;
+    const apiKey = process.env.SMS_HTTP_API_KEY;
+    const apiSecret = process.env.SMS_HTTP_API_SECRET;
+    const fromNumber = process.env.SMS_HTTP_FROM_NUMBER || process.env.SMS_HTTP_FROM;
+
+    if (!apiUrl) {
+      return { success: false, error: 'SMS_HTTP_API_URL not configured' };
+    }
+
+    // Support different HTTP methods and formats
+    const method = (process.env.SMS_HTTP_METHOD || 'POST').toUpperCase();
+    const requestFormat = process.env.SMS_HTTP_FORMAT || 'json'; // json, form, query
+
+    // Build request data based on format
+    let requestData = {};
+    let headers = {
+      'Content-Type': requestFormat === 'json' ? 'application/json' : 'application/x-www-form-urlencoded',
+    };
+
+    // Add authentication
+    if (apiKey) {
+      if (process.env.SMS_HTTP_AUTH_TYPE === 'header') {
+        const authHeader = process.env.SMS_HTTP_AUTH_HEADER || 'Authorization';
+        const authFormat = process.env.SMS_HTTP_AUTH_FORMAT || 'Bearer'; // Bearer, Basic, ApiKey
+        if (authFormat === 'Bearer') {
+          headers[authHeader] = `Bearer ${apiKey}`;
+        } else if (authFormat === 'ApiKey') {
+          headers[authHeader] = apiKey;
+        } else if (authFormat === 'Basic' && apiSecret) {
+          const credentials = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
+          headers[authHeader] = `Basic ${credentials}`;
+        }
+      } else {
+        // Add to request body/query
+        requestData[process.env.SMS_HTTP_API_KEY_FIELD || 'api_key'] = apiKey;
+        if (apiSecret) {
+          requestData[process.env.SMS_HTTP_API_SECRET_FIELD || 'api_secret'] = apiSecret;
+        }
+      }
+    }
+
+    // Map phone and message fields (customizable)
+    const toField = process.env.SMS_HTTP_TO_FIELD || 'to';
+    const messageField = process.env.SMS_HTTP_MESSAGE_FIELD || 'message';
+    const fromField = process.env.SMS_HTTP_FROM_FIELD || 'from';
+
+    requestData[toField] = to;
+    requestData[messageField] = message;
+    if (fromNumber) {
+      requestData[fromField] = fromNumber;
+    }
+
+    // Make HTTP request
+    const config = {
+      method,
+      url: apiUrl,
+      headers,
+      timeout: parseInt(process.env.SMS_HTTP_TIMEOUT || '10000', 10),
+    };
+
+    if (method === 'GET' || requestFormat === 'query') {
+      config.params = requestData;
+    } else if (requestFormat === 'json') {
+      config.data = requestData;
+    } else {
+      // form-urlencoded
+      const formData = Object.keys(requestData)
+        .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(requestData[key])}`)
+        .join('&');
+      config.data = formData;
+    }
+
+    const response = await axios(config);
+
+    // Extract message ID from response (customizable)
+    const messageIdField = process.env.SMS_HTTP_MESSAGE_ID_FIELD || 'message_id';
+    let messageId = null;
+
+    if (response.data) {
+      if (typeof response.data === 'string') {
+        try {
+          const parsed = JSON.parse(response.data);
+          messageId = parsed[messageIdField] || parsed.id || parsed.messageId || response.data;
+        } catch {
+          messageId = response.data;
+        }
+      } else {
+        messageId = response.data[messageIdField] || response.data.id || response.data.messageId;
+      }
+    }
+
+    // Check success (customizable)
+    const successField = process.env.SMS_HTTP_SUCCESS_FIELD || 'status';
+    const successValue = process.env.SMS_HTTP_SUCCESS_VALUE || 'success';
+    let isSuccess = false;
+
+    if (response.data) {
+      const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+      const status = data[successField] || data.status || response.status;
+      isSuccess = status === successValue || status === 'ok' || status === 200 || response.status === 200;
+    } else {
+      isSuccess = response.status >= 200 && response.status < 300;
+    }
+
+    if (isSuccess) {
+      logger.info(`[SMSService] SMS sent via HTTP API to ${to}, MessageId: ${messageId || 'N/A'}`);
+      return { success: true, messageId: messageId || 'http-sent' };
+    } else {
+      const errorMsg = response.data?.error || response.data?.message || 'Unknown error';
+      return { success: false, error: errorMsg };
+    }
+  } catch (error) {
+    logger.error(`[SMSService] HTTP API error:`, error);
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message || 'Failed to send SMS via HTTP API',
+    };
+  }
+};
+
+/**
  * Send SMS via AWS SNS
  * @param {string} to - Phone number to send to (E.164 format)
  * @param {string} message - Message content
@@ -148,7 +278,15 @@ const sendSMS = async (to, message) => {
 
   // Auto-detect provider based on available credentials
   if (smsProvider === 'auto') {
-    // Try Twilio first if credentials are available
+    // Try HTTP API first if configured (most flexible)
+    if (process.env.SMS_HTTP_API_URL) {
+      const result = await sendViaHTTP(to, message);
+      if (result.success) {
+        return result;
+      }
+    }
+
+    // Try Twilio if credentials are available
     if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
       const result = await sendViaTwilio(to, message);
       if (result.success) {
@@ -173,11 +311,15 @@ const sendSMS = async (to, message) => {
 
     return {
       success: false,
-      error: 'No SMS provider configured. Please set up Twilio or AWS SNS.',
+      error: 'No SMS provider configured. Please set up HTTP API, Twilio, or AWS SNS.',
     };
   }
 
   // Use specified provider
+  if (smsProvider === 'http' || smsProvider === 'custom') {
+    return await sendViaHTTP(to, message);
+  }
+
   if (smsProvider === 'twilio') {
     return await sendViaTwilio(to, message);
   }
@@ -188,7 +330,7 @@ const sendSMS = async (to, message) => {
 
   return {
     success: false,
-    error: `Unknown SMS provider: ${smsProvider}. Use 'twilio', 'aws', 'sns', or 'auto'`,
+    error: `Unknown SMS provider: ${smsProvider}. Use 'http', 'custom', 'twilio', 'aws', 'sns', or 'auto'`,
   };
 };
 
@@ -196,6 +338,7 @@ module.exports = {
   sendSMS,
   sendViaTwilio,
   sendViaSNS,
+  sendViaHTTP,
   initializeTwilio,
   initializeSNS,
 };

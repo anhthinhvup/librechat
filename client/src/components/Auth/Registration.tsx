@@ -68,15 +68,18 @@ const Registration: React.FC = () => {
     onMutate: () => {
       setIsSubmitting(true);
     },
-    onSuccess: async (_, variables) => {
+    onSuccess: async (data, variables) => {
       setIsSubmitting(false);
-      // If phone number was provided, show verification dialog
-      // OTP is automatically sent by backend during registration
+      // Check if backend actually sent OTP (phoneVerificationRequired flag)
+      // Only show verification dialog if OTP was sent
+      const phoneVerificationRequired = (data as any)?.phoneVerificationRequired ?? false;
+      
       // Get phone from form data (variables might not have phone after normalization)
       const formPhone = watch('phone');
       const phoneValue = variables.phone || formPhone;
       
-      if (phoneValue && phoneValue.trim() !== '') {
+      if (phoneValue && phoneValue.trim() !== '' && phoneVerificationRequired) {
+        // OTP was sent, show verification dialog
         const normalizedPhone = phoneValue.replace(/\s/g, '');
         setRegisteredPhone(normalizedPhone);
         setShowPhoneVerification(true);
@@ -85,7 +88,12 @@ const Registration: React.FC = () => {
           message: 'Verification code has been sent to your phone. Please enter the code below.',
         });
       } else {
-        // No phone, proceed with normal flow
+        // No phone or phone verification disabled, proceed with normal flow
+        if (phoneValue && phoneValue.trim() !== '') {
+          showToast({
+            message: 'Registration successful! Phone number saved. You can verify it later in settings.',
+          });
+        }
         setCountdown(3);
         const timer = setInterval(() => {
           setCountdown((prevCountdown) => {
@@ -215,13 +223,14 @@ const Registration: React.FC = () => {
                 message: localize('com_auth_email_pattern'),
               },
             })}
-            {renderInput('phone', 'com_auth_phone', 'tel', {
+            {/* Phone field temporarily disabled - uncomment to enable */}
+            {/* {renderInput('phone', 'com_auth_phone', 'tel', {
               required: false,
               pattern: {
                 value: /^\+?[1-9]\d{1,14}$/,
                 message: 'Invalid phone format. Use: +1234567890',
               },
-            })}
+            })} */}
             {showPhoneVerification && (
               <div className="mb-4 rounded-lg border border-blue-500 bg-blue-50 p-4 dark:bg-blue-900/20">
                 <p className="mb-2 text-sm font-medium text-blue-900 dark:text-blue-200">

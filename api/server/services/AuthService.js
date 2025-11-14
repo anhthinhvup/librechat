@@ -249,7 +249,14 @@ const registerUser = async (user, additionalData = {}) => {
     }
 
     // Auto-send phone verification OTP if phone number is provided
-    if (phone) {
+    // Can be disabled by setting ENABLE_PHONE_VERIFICATION=false in .env
+    const phoneVerificationEnabled = process.env.ENABLE_PHONE_VERIFICATION === undefined 
+      ? true 
+      : isEnabled(process.env.ENABLE_PHONE_VERIFICATION);
+    
+    let phoneVerificationSent = false;
+    
+    if (phone && phoneVerificationEnabled) {
       try {
         const { sendPhoneVerificationOTP } = require('~/server/services/PhoneVerificationService');
         const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
@@ -260,6 +267,7 @@ const registerUser = async (user, additionalData = {}) => {
         };
         const otpResult = await sendPhoneVerificationOTP(mockReq);
         if (otpResult.status === 200) {
+          phoneVerificationSent = true;
           logger.info(`[registerUser] Phone verification OTP sent to ${normalizedPhone} for new user`);
         } else {
           logger.warn(`[registerUser] Failed to send phone verification OTP: ${otpResult.message}`);
@@ -268,9 +276,15 @@ const registerUser = async (user, additionalData = {}) => {
         logger.error('[registerUser] Error sending phone verification OTP:', error);
         // Don't fail registration if OTP sending fails
       }
+    } else if (phone && !phoneVerificationEnabled) {
+      logger.info(`[registerUser] Phone verification is disabled. Phone number saved but OTP not sent.`);
     }
 
-    return { status: 200, message: genericVerificationMessage };
+    return { 
+      status: 200, 
+      message: genericVerificationMessage,
+      phoneVerificationRequired: phoneVerificationSent,
+    };
   } catch (err) {
     logger.error('[registerUser] Error in registering user:', err);
     if (newUserId) {
