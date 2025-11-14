@@ -419,25 +419,3 @@ module.exports = {
   sendPhoneVerificationController,
   verifyPhoneController,
 };
-
-    },
-  });
-
-  // 5. clear the flow state for the OAuth tokens
-  const flowsCache = getLogStores(CacheKeys.FLOWS);
-  const flowManager = getFlowStateManager(flowsCache);
-  const flowId = MCPOAuthHandler.generateFlowId(userId, serverName);
-  await flowManager.deleteFlow(flowId, 'mcp_get_tokens');
-  await flowManager.deleteFlow(flowId, 'mcp_oauth');
-};
-module.exports = {
-  getUserController,
-  getTermsStatusController,
-  acceptTermsController,
-  deleteUserController,
-  verifyEmailController,
-  updateUserPluginsController,
-  resendVerificationController,
-  sendPhoneVerificationController,
-  verifyPhoneController,
-};
