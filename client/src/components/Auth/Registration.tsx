@@ -8,6 +8,7 @@ import {
   useSendPhoneVerificationOTPMutation,
   useVerifyPhoneOTPMutation,
 } from '~/data-provider';
+import { useAuthContext } from '~/hooks';
 import type { TRegisterUser, TError } from 'librechat-data-provider';
 import type { TLoginLayoutContext } from '~/common';
 import { useLocalize, TranslationKeys } from '~/hooks';
@@ -63,17 +64,49 @@ const Registration: React.FC = () => {
     },
   });
 
+  const { mutate: sendOTPMutate } = useSendPhoneVerificationOTPMutation();
+
   const registerUser = useRegisterUserMutation({
     onMutate: () => {
       setIsSubmitting(true);
     },
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       setIsSubmitting(false);
-      // If phone number was provided, show verification dialog
+      // If phone number was provided, send OTP and show verification dialog
       if (variables.phone && variables.phone.trim() !== '') {
-        setRegisteredPhone(variables.phone);
-        setShowPhoneVerification(true);
-        setCountdown(0); // Don't auto-redirect
+        const normalizedPhone = variables.phone.replace(/\s/g, '');
+        setRegisteredPhone(normalizedPhone);
+        
+        // Automatically send OTP after registration
+        sendOTPMutate(
+          { phone: normalizedPhone },
+          {
+            onSuccess: (data: any) => {
+              setShowPhoneVerification(true);
+              setCountdown(0); // Don't auto-redirect
+              // Show OTP in development mode
+              if (data.otp) {
+                setOtpCode(data.otp);
+                showToast({
+                  message: `Verification code: ${data.otp} (Development mode)`,
+                });
+              } else {
+                showToast({
+                  message: data.message || 'Verification code sent to your phone',
+                });
+              }
+            },
+            onError: (error: any) => {
+              // Still show verification form even if sending fails
+              setShowPhoneVerification(true);
+              setCountdown(0);
+              showToast({
+                message: error?.message || 'Failed to send verification code. Please try again in Settings.',
+                status: 'error',
+              });
+            },
+          },
+        );
       } else {
         // No phone, proceed with normal flow
         setCountdown(3);
