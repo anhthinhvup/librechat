@@ -49,13 +49,19 @@ const sendPhoneVerificationOTP = async (req) => {
     // For now, log the OTP (in production, send via SMS)
     logger.info(`[sendPhoneVerificationOTP] OTP for ${normalizedPhone}: ${otpCode}`);
     
-    // In development, you can see the OTP in logs
+    // In development, return OTP in response for testing
     // In production, implement SMS sending here:
     // await sendSMS(normalizedPhone, `Your verification code is: ${otpCode}`);
+    
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const responseMessage = isDevelopment
+      ? `Verification code sent successfully. OTP: ${otpCode} (Development mode - check server logs in production)`
+      : 'Verification code sent successfully. Please check your phone.';
 
     return {
       status: 200,
-      message: 'Verification code sent successfully. Please check your phone.',
+      message: responseMessage,
+      ...(isDevelopment && { otp: otpCode }), // Include OTP in dev mode for testing
     };
   } catch (error) {
     logger.error('[sendPhoneVerificationOTP]', error);
