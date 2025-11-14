@@ -65,10 +65,18 @@ const PhoneVerification: React.FC = () => {
     sendOTPMutate(
       { phone: phone.replace(/\s/g, '') },
       {
-        onSuccess: (data) => {
+        onSuccess: (data: any) => {
+          // In development, OTP is included in response
+          const message = data.otp
+            ? `Verification code: ${data.otp} (Development mode)`
+            : data.message || 'Verification code sent successfully';
           showToast({
-            message: data.message || 'Verification code sent successfully',
+            message,
           });
+          // Auto-fill OTP in development mode
+          if (data.otp) {
+            setOtpCode(data.otp);
+          }
           setShowOTPInput(true);
           setIsSendingOTP(false);
         },
