@@ -172,3 +172,9 @@ export const useVerifyTwoFactorTempMutation = (
     },
   );
 };
+
+/* Phone Verification */
+export {
+  useSendPhoneVerificationOTPMutation,
+  useVerifyPhoneOTPMutation,
+} from 'librechat-data-provider';
