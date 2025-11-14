@@ -64,49 +64,22 @@ const Registration: React.FC = () => {
     },
   });
 
-  const { mutate: sendOTPMutate } = useSendPhoneVerificationOTPMutation();
-
   const registerUser = useRegisterUserMutation({
     onMutate: () => {
       setIsSubmitting(true);
     },
     onSuccess: async (_, variables) => {
       setIsSubmitting(false);
-      // If phone number was provided, send OTP and show verification dialog
+      // If phone number was provided, show verification dialog
+      // OTP is automatically sent by backend during registration
       if (variables.phone && variables.phone.trim() !== '') {
         const normalizedPhone = variables.phone.replace(/\s/g, '');
         setRegisteredPhone(normalizedPhone);
-        
-        // Automatically send OTP after registration
-        sendOTPMutate(
-          { phone: normalizedPhone },
-          {
-            onSuccess: (data: any) => {
-              setShowPhoneVerification(true);
-              setCountdown(0); // Don't auto-redirect
-              // Show OTP in development mode
-              if (data.otp) {
-                setOtpCode(data.otp);
-                showToast({
-                  message: `Verification code: ${data.otp} (Development mode)`,
-                });
-              } else {
-                showToast({
-                  message: data.message || 'Verification code sent to your phone',
-                });
-              }
-            },
-            onError: (error: any) => {
-              // Still show verification form even if sending fails
-              setShowPhoneVerification(true);
-              setCountdown(0);
-              showToast({
-                message: error?.message || 'Failed to send verification code. Please try again in Settings.',
-                status: 'error',
-              });
-            },
-          },
-        );
+        setShowPhoneVerification(true);
+        setCountdown(0); // Don't auto-redirect
+        showToast({
+          message: 'Verification code has been sent to your phone. Please enter the code below.',
+        });
       } else {
         // No phone, proceed with normal flow
         setCountdown(3);
@@ -259,9 +232,12 @@ const Registration: React.FC = () => {
                         return;
                       }
                       setIsVerifyingOTP(true);
+                      // Get email from form
+                      const formData = watch();
                       verifyOTPMutate({
                         phone: registeredPhone.replace(/\s/g, ''),
                         code: otpCode,
+                        email: formData.email, // Include email for unauthenticated verification
                       });
                     }}
                     disabled={isVerifyingOTP || otpCode.length !== 6}

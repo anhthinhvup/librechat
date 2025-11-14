@@ -298,6 +298,7 @@ const sendPhoneVerificationController = async (req, res) => {
 
 const verifyPhoneController = async (req, res) => {
   try {
+    // Allow verification without JWT if email is provided (for registration flow)
     const result = await verifyPhoneOTP(req);
     return res.status(result.status).json({ message: result.message });
   } catch (e) {
@@ -407,6 +408,28 @@ const maybeUninstallOAuthMCP = async (userId, pluginKey, appConfig) => {
   await flowManager.deleteFlow(flowId, 'mcp_oauth');
 };
 
+module.exports = {
+  getUserController,
+  getTermsStatusController,
+  acceptTermsController,
+  deleteUserController,
+  verifyEmailController,
+  updateUserPluginsController,
+  resendVerificationController,
+  sendPhoneVerificationController,
+  verifyPhoneController,
+};
+
+    },
+  });
+
+  // 5. clear the flow state for the OAuth tokens
+  const flowsCache = getLogStores(CacheKeys.FLOWS);
+  const flowManager = getFlowStateManager(flowsCache);
+  const flowId = MCPOAuthHandler.generateFlowId(userId, serverName);
+  await flowManager.deleteFlow(flowId, 'mcp_get_tokens');
+  await flowManager.deleteFlow(flowId, 'mcp_oauth');
+};
 module.exports = {
   getUserController,
   getTermsStatusController,

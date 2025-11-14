@@ -87,27 +87,40 @@ const sendPhoneVerificationOTP = async (req) => {
 };
 
 /**
- * Verify Phone OTP
+ * Verify Phone OTP (with or without authentication)
  * @param {ServerRequest} req
+ * @param {string} [userId] - Optional userId if not authenticated (for registration flow)
  * @returns {Promise<{status: number, message: string}>}
  */
-const verifyPhoneOTP = async (req) => {
+const verifyPhoneOTP = async (req, userId = null) => {
   try {
-    const { phone, code } = req.body;
-    const userId = req.user._id;
+    const { phone, code, email } = req.body;
+    const targetUserId = userId || req.user?._id;
 
     if (!phone || !code) {
       return { status: 400, message: 'Phone number and verification code are required' };
     }
 
+    if (!targetUserId && !email) {
+      return { status: 400, message: 'User identification required (userId or email)' };
+    }
+
     // Normalize phone number
     const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
 
-    // Get user with verification code (use + to include fields with select: false)
-    const user = await findUser(
-      { _id: userId },
-      '_id phone phoneVerified +phoneVerificationCode +phoneVerificationExpires',
-    );
+    // Find user by userId or email
+    let user;
+    if (targetUserId) {
+      user = await findUser(
+        { _id: targetUserId },
+        '_id phone phoneVerified email +phoneVerificationCode +phoneVerificationExpires',
+      );
+    } else if (email) {
+      user = await findUser(
+        { email },
+        '_id phone phoneVerified email +phoneVerificationCode +phoneVerificationExpires',
+      );
+    }
 
     if (!user) {
       return { status: 404, message: 'User not found' };
@@ -133,13 +146,13 @@ const verifyPhoneOTP = async (req) => {
     }
 
     // Mark phone as verified and clear OTP
-    await updateUser(userId, {
+    await updateUser(user._id, {
       phoneVerified: true,
       phoneVerificationCode: undefined,
       phoneVerificationExpires: undefined,
     });
 
-    logger.info(`[verifyPhoneOTP] Phone verified for user ${userId}: ${normalizedPhone}`);
+    logger.info(`[verifyPhoneOTP] Phone verified for user ${user._id}: ${normalizedPhone}`);
 
     return {
       status: 200,

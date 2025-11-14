@@ -480,6 +480,7 @@ export type TSendPhoneVerificationOTP = {
 export type TVerifyPhoneOTP = {
   phone: string;
   code: string;
+  email?: string; // Optional: for unauthenticated verification during registration
 };
 
 export type TRefreshTokenResponse = {
