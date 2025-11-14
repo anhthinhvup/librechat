@@ -72,8 +72,12 @@ const Registration: React.FC = () => {
       setIsSubmitting(false);
       // If phone number was provided, show verification dialog
       // OTP is automatically sent by backend during registration
-      if (variables.phone && variables.phone.trim() !== '') {
-        const normalizedPhone = variables.phone.replace(/\s/g, '');
+      // Get phone from form data (variables might not have phone after normalization)
+      const formPhone = watch('phone');
+      const phoneValue = variables.phone || formPhone;
+      
+      if (phoneValue && phoneValue.trim() !== '') {
+        const normalizedPhone = phoneValue.replace(/\s/g, '');
         setRegisteredPhone(normalizedPhone);
         setShowPhoneVerification(true);
         setCountdown(0); // Don't auto-redirect
