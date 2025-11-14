@@ -1,0 +1,13 @@
+# Example docker-compose.override.yaml
+# Copy this file to docker-compose.override.yaml and modify as needed
+
+services:
+  api:
+    # Use local built image instead of registry image
+    image: librechat-api:local
+    # Uncomment to build from local Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.multi
+    #   target: api-build
+
