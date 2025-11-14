@@ -143,7 +143,7 @@ const Registration: React.FC = () => {
           {localize('com_auth_error_create')} {errorMessage}
         </ErrorMessage>
       )}
-      {registerUser.isSuccess && countdown > 0 && (
+      {registerUser.isSuccess && countdown > 0 && !showPhoneVerification && (
         <div
           className="rounded-md border border-green-500 bg-green-500/10 px-3 py-2 text-sm text-gray-600 dark:text-gray-200"
           role="alert"
@@ -155,6 +155,14 @@ const Registration: React.FC = () => {
           ) +
             ' ' +
             localize('com_auth_email_verification_redirecting', { 0: countdown.toString() })}
+        </div>
+      )}
+      {registerUser.isSuccess && showPhoneVerification && (
+        <div
+          className="rounded-md border border-green-500 bg-green-500/10 px-3 py-2 text-sm text-gray-600 dark:text-gray-200"
+          role="alert"
+        >
+          Registration successful! Please verify your phone number below.
         </div>
       )}
       {!startupConfigError && !isFetching && (
