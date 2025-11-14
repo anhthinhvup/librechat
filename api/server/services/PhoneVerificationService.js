@@ -3,155 +3,96 @@ const { findUser, updateUser } = require('~/models');
 const crypto = require('crypto');
 
 /**
- * Generate OTP code (6 digits)
+ * Generate a 6-digit OTP code
  * @returns {string}
  */
 const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 999999).toString();
 };
 
 /**
- * Send OTP via SMS
- * @param {string} phone - Phone number
- * @param {string} code - OTP code
- * @returns {Promise<void>}
- */
-const sendSMS = async (phone, code) => {
-  // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
-  // For now, just log the OTP (for testing)
-  logger.info(`[sendSMS] OTP for ${phone}: ${code}`);
-  
-  // Example with Twilio (uncomment and configure):
-  /*
-  const twilio = require('twilio');
-  const client = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-  );
-  
-  await client.messages.create({
-    body: `Your LibreChat verification code is: ${code}`,
-    to: phone,
-    from: process.env.TWILIO_PHONE_NUMBER,
-  });
-  */
-  
-  // Example with AWS SNS (uncomment and configure):
-  /*
-  const AWS = require('aws-sdk');
-  const sns = new AWS.SNS({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION || 'us-east-1',
-  });
-  
-  await sns.publish({
-    PhoneNumber: phone,
-    Message: `Your LibreChat verification code is: ${code}`,
-  }).promise();
-  */
-};
-
-/**
- * Send phone verification OTP
+ * Send Phone Verification OTP
  * @param {ServerRequest} req
  * @returns {Promise<{status: number, message: string}>}
  */
 const sendPhoneVerificationOTP = async (req) => {
   try {
     const { phone } = req.body;
-    const userId = req.user?._id;
+    const userId = req.user._id;
 
     if (!phone) {
       return { status: 400, message: 'Phone number is required' };
     }
 
-    // Validate phone format (basic validation)
-    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
-      return { status: 400, message: 'Invalid phone number format' };
-    }
+    // Normalize phone number (ensure it starts with +)
+    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
 
-    // Normalize phone number (remove spaces, ensure + prefix)
-    const normalizedPhone = phone.replace(/\s/g, '').startsWith('+') 
-      ? phone.replace(/\s/g, '') 
-      : `+${phone.replace(/\s/g, '')}`;
-
-    // Check if phone is already used by another user
-    const existingUser = await findUser({ phone: normalizedPhone }, 'phone _id');
-    if (existingUser && existingUser._id.toString() !== userId?.toString()) {
-      return { status: 400, message: 'Phone number already in use' };
+    // Check if phone is already verified by another user
+    const existingUser = await findUser({ phone: normalizedPhone, phoneVerified: true });
+    if (existingUser && existingUser._id.toString() !== userId.toString()) {
+      return { status: 400, message: 'This phone number is already verified by another account' };
     }
 
     // Generate OTP
-    const otp = generateOTP();
+    const otpCode = generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Hash OTP for storage
-    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    // Save OTP to user
+    await updateUser(userId, {
+      phone: normalizedPhone,
+      phoneVerificationCode: otpCode,
+      phoneVerificationExpires: expiresAt,
+      phoneVerified: false,
+    });
 
-    // Update or create user with phone and OTP
-    if (userId) {
-      await updateUser(userId, {
-        phone: normalizedPhone,
-        phoneVerificationCode: otpHash,
-        phoneVerificationExpires: expiresAt,
-        phoneVerified: false,
-      });
-    } else {
-      // For registration, store in session or return error
-      return { status: 401, message: 'User not authenticated' };
-    }
-
-    // Send OTP via SMS
-    await sendSMS(normalizedPhone, otp);
-
-    logger.info(`[sendPhoneVerificationOTP] OTP sent to ${normalizedPhone}`);
+    // TODO: Integrate with SMS service (Twilio, AWS SNS, etc.)
+    // For now, log the OTP (in production, send via SMS)
+    logger.info(`[sendPhoneVerificationOTP] OTP for ${normalizedPhone}: ${otpCode}`);
+    
+    // In development, you can see the OTP in logs
+    // In production, implement SMS sending here:
+    // await sendSMS(normalizedPhone, `Your verification code is: ${otpCode}`);
 
     return {
       status: 200,
-      message: 'Verification code sent to your phone',
+      message: 'Verification code sent successfully. Please check your phone.',
     };
   } catch (error) {
-    logger.error(`[sendPhoneVerificationOTP] Error: ${error.message}`);
-    return {
-      status: 500,
-      message: 'Something went wrong',
-    };
+    logger.error('[sendPhoneVerificationOTP]', error);
+    return { status: 500, message: 'Failed to send verification code' };
   }
 };
 
 /**
- * Verify phone OTP
+ * Verify Phone OTP
  * @param {ServerRequest} req
  * @returns {Promise<{status: number, message: string}>}
  */
 const verifyPhoneOTP = async (req) => {
   try {
     const { phone, code } = req.body;
-    const userId = req.user?._id;
+    const userId = req.user._id;
 
     if (!phone || !code) {
-      return { status: 400, message: 'Phone number and code are required' };
+      return { status: 400, message: 'Phone number and verification code are required' };
     }
 
     // Normalize phone number
-    const normalizedPhone = phone.replace(/\s/g, '').startsWith('+') 
-      ? phone.replace(/\s/g, '') 
-      : `+${phone.replace(/\s/g, '')}`;
+    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
 
-    // Find user
+    // Get user with verification code (use + to include fields with select: false)
     const user = await findUser(
-      { _id: userId, phone: normalizedPhone },
-      'phone phoneVerificationCode phoneVerificationExpires phoneVerified'
+      { _id: userId },
+      '_id phone phoneVerified +phoneVerificationCode +phoneVerificationExpires',
     );
 
     if (!user) {
-      return { status: 404, message: 'User or phone number not found' };
+      return { status: 404, message: 'User not found' };
     }
 
-    if (user.phoneVerified) {
-      return { status: 200, message: 'Phone already verified' };
+    // Check if phone matches
+    if (user.phone !== normalizedPhone) {
+      return { status: 400, message: 'Phone number does not match' };
     }
 
     // Check if OTP exists and not expired
@@ -160,34 +101,30 @@ const verifyPhoneOTP = async (req) => {
     }
 
     if (new Date() > user.phoneVerificationExpires) {
-      return { status: 400, message: 'Verification code expired. Please request a new code.' };
+      return { status: 400, message: 'Verification code has expired. Please request a new code.' };
     }
 
     // Verify OTP
-    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-    if (codeHash !== user.phoneVerificationCode) {
+    if (user.phoneVerificationCode !== code) {
       return { status: 400, message: 'Invalid verification code' };
     }
 
-    // Update user as verified
+    // Mark phone as verified and clear OTP
     await updateUser(userId, {
       phoneVerified: true,
-      phoneVerificationCode: null,
-      phoneVerificationExpires: null,
+      phoneVerificationCode: undefined,
+      phoneVerificationExpires: undefined,
     });
 
-    logger.info(`[verifyPhoneOTP] Phone verified for ${normalizedPhone}`);
+    logger.info(`[verifyPhoneOTP] Phone verified for user ${userId}: ${normalizedPhone}`);
 
     return {
       status: 200,
       message: 'Phone number verified successfully',
     };
   } catch (error) {
-    logger.error(`[verifyPhoneOTP] Error: ${error.message}`);
-    return {
-      status: 500,
-      message: 'Something went wrong',
-    };
+    logger.error('[verifyPhoneOTP]', error);
+    return { status: 500, message: 'Failed to verify phone number' };
   }
 };
 

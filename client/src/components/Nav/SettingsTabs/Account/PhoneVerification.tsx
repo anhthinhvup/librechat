@@ -1,16 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSetRecoilState } from 'recoil';
 import { PhoneIcon } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
-  OGDialog,
-  useToastContext,
-  OGDialogContent,
-  OGDialogHeader,
-  OGDialogTitle,
   Button,
   Input,
-  Spinner,
+  useToastContext,
 } from '@librechat/client';
 import type { TUser } from 'librechat-data-provider';
 import {
@@ -20,14 +14,6 @@ import {
 import { useAuthContext, useLocalize } from '~/hooks';
 import store from '~/store';
 
-type Phase = 'input' | 'verify';
-
-const phaseVariants = {
-  initial: { opacity: 0, scale: 0.95 },
-  animate: { opacity: 1, scale: 1, transition: { duration: 0.3, ease: 'easeOut' } },
-  exit: { opacity: 0, scale: 0.95, transition: { duration: 0.3, ease: 'easeIn' } },
-};
-
 const PhoneVerification: React.FC = () => {
   const localize = useLocalize();
   const { user } = useAuthContext();
@@ -35,215 +21,158 @@ const PhoneVerification: React.FC = () => {
   const { showToast } = useToastContext();
 
   const [phone, setPhone] = useState<string>(user?.phone || '');
-  const [code, setCode] = useState<string>('');
-  const [isDialogOpen, setDialogOpen] = useState<boolean>(false);
-  const [phase, setPhase] = useState<Phase>(user?.phone && !user?.phoneVerified ? 'verify' : 'input');
+  const [otpCode, setOtpCode] = useState<string>('');
+  const [isSendingOTP, setIsSendingOTP] = useState<boolean>(false);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [showOTPInput, setShowOTPInput] = useState<boolean>(false);
 
-  const { mutate: sendOTPMutate, isLoading: isSending } = useSendPhoneVerificationOTPMutation();
-  const { mutate: verifyOTPMutate, isLoading: isVerifying } = useVerifyPhoneOTPMutation();
-
-  const resetState = useCallback(() => {
-    setCode('');
-    setPhase(user?.phone && !user?.phoneVerified ? 'verify' : 'input');
-  }, [user]);
+  const { mutate: sendOTPMutate } = useSendPhoneVerificationOTPMutation();
+  const { mutate: verifyOTPMutate } = useVerifyPhoneOTPMutation({
+    onSuccess: (data) => {
+      showToast({ message: data.message || 'Phone number verified successfully' });
+      setShowOTPInput(false);
+      setOtpCode('');
+      // Refresh user data
+      if (user) {
+        setUser({ ...user, phoneVerified: true, phone: phone });
+      }
+    },
+    onError: (error: any) => {
+      showToast({
+        message: error?.message || 'Failed to verify phone number',
+        status: 'error',
+      });
+    },
+  });
 
   const handleSendOTP = useCallback(() => {
-    if (!phone.trim()) {
+    if (!phone || phone.trim() === '') {
       showToast({ message: 'Please enter a phone number', status: 'error' });
       return;
     }
 
+    // Basic phone validation
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+      showToast({
+        message: 'Invalid phone number format. Use format: +1234567890',
+        status: 'error',
+      });
+      return;
+    }
+
+    setIsSendingOTP(true);
     sendOTPMutate(
-      { phone: phone.trim() },
+      { phone: phone.replace(/\s/g, '') },
       {
-        onSuccess: () => {
-          showToast({ message: 'Verification code sent to your phone' });
-          setPhase('verify');
+        onSuccess: (data) => {
+          showToast({
+            message: data.message || 'Verification code sent successfully',
+          });
+          setShowOTPInput(true);
+          setIsSendingOTP(false);
         },
         onError: (error: any) => {
           showToast({
-            message: error?.response?.data?.message || 'Failed to send verification code',
+            message: error?.message || 'Failed to send verification code',
             status: 'error',
           });
+          setIsSendingOTP(false);
         },
       },
     );
   }, [phone, sendOTPMutate, showToast]);
 
-  const handleVerify = useCallback(() => {
-    if (!code.trim() || code.trim().length !== 6) {
-      showToast({ message: 'Please enter a valid 6-digit code', status: 'error' });
+  const handleVerifyOTP = useCallback(() => {
+    if (!otpCode || otpCode.trim() === '') {
+      showToast({ message: 'Please enter the verification code', status: 'error' });
       return;
     }
 
+    if (otpCode.length !== 6) {
+      showToast({ message: 'Verification code must be 6 digits', status: 'error' });
+      return;
+    }
+
+    setIsVerifying(true);
     verifyOTPMutate(
-      { phone: phone.trim(), code: code.trim() },
+      {
+        phone: phone.replace(/\s/g, ''),
+        code: otpCode,
+      },
       {
         onSuccess: () => {
-          showToast({ message: 'Phone number verified successfully' });
-          setDialogOpen(false);
-          setUser(
-            (prev) =>
-              ({
-                ...prev,
-                phone: phone.trim(),
-                phoneVerified: true,
-              }) as TUser,
-          );
-          resetState();
+          setIsVerifying(false);
         },
-        onError: (error: any) => {
-          showToast({
-            message: error?.response?.data?.message || 'Invalid verification code',
-            status: 'error',
-          });
+        onError: () => {
+          setIsVerifying(false);
         },
       },
     );
-  }, [phone, code, verifyOTPMutate, showToast, setUser, resetState]);
+  }, [phone, otpCode, verifyOTPMutate, showToast]);
 
-  const handleResend = useCallback(() => {
-    handleSendOTP();
-  }, [handleSendOTP]);
+  const isPhoneVerified = user?.phoneVerified === true;
+  const hasPhone = user?.phone && user.phone.trim() !== '';
 
   return (
-    <OGDialog
-      open={isDialogOpen}
-      onOpenChange={(open) => {
-        setDialogOpen(open);
-        if (!open) {
-          resetState();
-        }
-      }}
-    >
-      <div className="flex items-center justify-between rounded-lg border border-border-light bg-surface-primary p-4">
-        <div className="flex items-center gap-3">
-          <PhoneIcon className="h-5 w-5 text-text-secondary" />
-          <div>
-            <div className="font-medium text-text-primary">Phone Verification</div>
-            <div className="text-sm text-text-secondary">
-              {user?.phoneVerified
-                ? `Verified: ${user.phone}`
-                : user?.phone
-                  ? `Unverified: ${user.phone}`
-                  : 'No phone number added'}
-            </div>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => setDialogOpen(true)}
-          className="h-9 px-4"
-        >
-          {user?.phoneVerified ? 'Update' : user?.phone ? 'Verify' : 'Add Phone'}
-        </Button>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <PhoneIcon className="h-5 w-5" />
+        <span className="font-medium">Phone Verification</span>
+        {isPhoneVerified && (
+          <span className="text-xs text-green-600 dark:text-green-400">(Verified)</span>
+        )}
       </div>
 
-      <OGDialogContent className="w-11/12 max-w-lg p-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={phase}
-            variants={phaseVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            className="space-y-6"
-          >
-            <OGDialogHeader>
-              <OGDialogTitle className="mb-2 flex items-center gap-3 text-2xl font-bold">
-                <PhoneIcon className="h-6 w-6 text-primary" />
-                {user?.phoneVerified ? 'Update Phone Number' : 'Verify Phone Number'}
-              </OGDialogTitle>
-            </OGDialogHeader>
+      {!isPhoneVerified && (
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+1234567890"
+              disabled={isSendingOTP || isVerifying}
+              className="flex-1"
+            />
+            <Button
+              onClick={handleSendOTP}
+              disabled={isSendingOTP || isVerifying || !phone}
+              variant="default"
+            >
+              {isSendingOTP ? 'Sending...' : 'Send Code'}
+            </Button>
+          </div>
 
-            <AnimatePresence mode="wait">
-              {phase === 'input' && (
-                <motion.div
-                  key="input"
-                  variants={phaseVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="space-y-4"
-                >
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-text-primary">
-                      Phone Number
-                    </label>
-                    <Input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+1234567890"
-                      className="w-full"
-                      disabled={isSending}
-                    />
-                    <p className="mt-1 text-xs text-text-secondary">
-                      Enter your phone number with country code (e.g., +84123456789)
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleSendOTP}
-                    disabled={!phone.trim() || isSending}
-                    className="w-full"
-                    variant="submit"
-                  >
-                    {isSending ? <Spinner /> : 'Send Verification Code'}
-                  </Button>
-                </motion.div>
-              )}
+          {showOTPInput && (
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="Enter 6-digit code"
+                disabled={isVerifying}
+                className="flex-1"
+                maxLength={6}
+              />
+              <Button
+                onClick={handleVerifyOTP}
+                disabled={isVerifying || otpCode.length !== 6}
+                variant="default"
+              >
+                {isVerifying ? 'Verifying...' : 'Verify'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
-              {phase === 'verify' && (
-                <motion.div
-                  key="verify"
-                  variants={phaseVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="space-y-4"
-                >
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-text-primary">
-                      Verification Code
-                    </label>
-                    <Input
-                      type="text"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="000000"
-                      className="w-full text-center text-2xl tracking-widest"
-                      maxLength={6}
-                      disabled={isVerifying}
-                    />
-                    <p className="mt-1 text-xs text-text-secondary">
-                      Enter the 6-digit code sent to {phone || user?.phone}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleResend}
-                      disabled={isSending}
-                      variant="outline"
-                      className="flex-1"
-                    >
-                      {isSending ? <Spinner /> : 'Resend Code'}
-                    </Button>
-                    <Button
-                      onClick={handleVerify}
-                      disabled={code.trim().length !== 6 || isVerifying}
-                      className="flex-1"
-                      variant="submit"
-                    >
-                      {isVerifying ? <Spinner /> : 'Verify'}
-                    </Button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        </AnimatePresence>
-      </OGDialogContent>
-    </OGDialog>
+      {isPhoneVerified && hasPhone && (
+        <div className="text-sm text-text-secondary">
+          Verified phone: {user.phone}
+        </div>
+      )}
+    </div>
   );
 };
 
