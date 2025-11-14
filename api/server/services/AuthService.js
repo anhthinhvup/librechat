@@ -202,11 +202,16 @@ const registerUser = async (user, additionalData = {}) => {
       return { status: 200, message: genericVerificationMessage };
     }
 
-    // Check if phone is already used (if provided)
+    // Check if phone is already verified by another user (if provided)
+    // Allow unverified phone numbers to be reused
     if (phone) {
-      const existingPhoneUser = await findUser({ phone }, 'phone _id');
+      const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+      const existingPhoneUser = await findUser(
+        { phone: normalizedPhone, phoneVerified: true },
+        'phone phoneVerified _id',
+      );
       if (existingPhoneUser) {
-        logger.warn(`[registerUser] [Phone already in use] [Phone: ${phone}]`);
+        logger.warn(`[registerUser] [Phone already verified by another user] [Phone: ${normalizedPhone}]`);
         return { status: 400, message: 'Phone number already in use' };
       }
     }
@@ -223,7 +228,7 @@ const registerUser = async (user, additionalData = {}) => {
       avatar: null,
       role: isFirstRegisteredUser ? SystemRoles.ADMIN : SystemRoles.USER,
       password: bcrypt.hashSync(password, salt),
-      phone: phone || null,
+      phone: phone ? (phone.startsWith('+') ? phone : `+${phone}`) : null,
       phoneVerified: false,
       ...additionalData,
     };
