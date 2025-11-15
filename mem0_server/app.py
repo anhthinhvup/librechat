@@ -110,18 +110,8 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
-            # Dùng custom provider với requests/httpx trực tiếp
-            custom_provider = CustomLLMProvider(
-                api_key=OPENAI_API_KEY,
-                base_url=OPENAI_API_BASE_URL,
-                model="gpt-4o-mini"
-            )
-            # Mem0 có thể nhận custom provider trực tiếp
-            config["llm"] = custom_provider
-            logger.info(f"✅ Using custom LLM provider for user {user_id}")
-        elif OPENAI_API_KEY:
-            # Fallback: dùng OpenAI provider nếu không có reverse proxy
+        if OPENAI_API_KEY:
+            # Dùng OpenAI provider - sẽ patch client sau để dùng reverse proxy
             config["llm"] = {
                 "provider": "openai",
                 "config": {
@@ -130,6 +120,39 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         memory = Memory.from_config(config)
+        
+        # Patch client sau khi Memory được tạo để dùng reverse proxy
+        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
+            try:
+                # Tìm và patch OpenAI client trong memory
+                if hasattr(memory, 'llm') and memory.llm:
+                    # Thử nhiều cách để tìm client
+                    if hasattr(memory.llm, 'client'):
+                        memory.llm.client.base_url = OPENAI_API_BASE_URL
+                        logger.info(f"✅ Patched llm.client.base_url for user {user_id}")
+                    elif hasattr(memory.llm, '_client'):
+                        memory.llm._client.base_url = OPENAI_API_BASE_URL
+                        logger.info(f"✅ Patched llm._client.base_url for user {user_id}")
+                    # Hoặc tìm trong config
+                    elif hasattr(memory.llm, 'config') and memory.llm.config:
+                        if hasattr(memory.llm.config, 'client'):
+                            memory.llm.config.client.base_url = OPENAI_API_BASE_URL
+                            logger.info(f"✅ Patched llm.config.client.base_url for user {user_id}")
+                    # Hoặc tìm bằng cách inspect
+                    else:
+                        import inspect
+                        for attr_name in dir(memory.llm):
+                            if 'client' in attr_name.lower() and not attr_name.startswith('__'):
+                                try:
+                                    attr = getattr(memory.llm, attr_name)
+                                    if hasattr(attr, 'base_url'):
+                                        attr.base_url = OPENAI_API_BASE_URL
+                                        logger.info(f"✅ Patched llm.{attr_name}.base_url for user {user_id}")
+                                        break
+                                except:
+                                    pass
+            except Exception as e:
+                logger.debug(f"Could not patch client: {e}")
         
         memory_instances[user_id] = memory
     return memory_instances[user_id]
