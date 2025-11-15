@@ -15,11 +15,9 @@ import json
 import requests
 from typing import Dict, Any, List
 
-# Cấu hình custom provider cho mem0
+# Dùng OpenAI API với HTTP request trực tiếp (không dùng thư viện OpenAI)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-CUSTOM_LLM_ENDPOINT = os.getenv("CUSTOM_LLM_ENDPOINT", "") or os.getenv("OPENAI_REVERSE_PROXY", "")
-CUSTOM_LLM_API_KEY = os.getenv("CUSTOM_LLM_API_KEY", "") or OPENAI_API_KEY
-USE_CUSTOM_PROVIDER = os.getenv("MEM0_LLM_PROVIDER", "").lower() == "custom" or bool(CUSTOM_LLM_ENDPOINT)
+OPENAI_API_BASE_URL = "https://api.openai.com/v1"  # OpenAI API chính thức
 
 try:
     from mem0 import Memory
@@ -63,60 +61,17 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if USE_CUSTOM_PROVIDER and CUSTOM_LLM_ENDPOINT:
-            # Mem0 có thể không hỗ trợ "custom" provider trực tiếp
-            # Thử dùng OpenAI provider nhưng patch client sau
-            config["llm"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "gpt-4o-mini",
-                    "api_key": CUSTOM_LLM_API_KEY,
-                }
-            }
-            logger.info(f"✅ Will use custom endpoint: {CUSTOM_LLM_ENDPOINT}")
-        elif OPENAI_API_KEY:
-            # Fallback: dùng OpenAI provider
-            config["llm"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "gpt-4o-mini",
-                    "api_key": OPENAI_API_KEY,
-                }
-            }
+        if OPENAI_API_KEY:
+            # Dùng custom provider với HTTP request trực tiếp (không dùng thư viện OpenAI)
+            custom_provider = CustomOpenAIProvider(
+                api_key=OPENAI_API_KEY,
+                base_url=OPENAI_API_BASE_URL,
+                model="gpt-4o-mini"
+            )
+            # Mem0 có thể nhận custom provider trực tiếp
+            config["llm"] = custom_provider
+            logger.info(f"✅ Using custom HTTP client for OpenAI API for user {user_id}")
         memory = Memory.from_config(config)
-        
-        # Patch client sau khi Memory được tạo để dùng custom endpoint
-        if USE_CUSTOM_PROVIDER and CUSTOM_LLM_ENDPOINT:
-            try:
-                # Tìm và patch OpenAI client trong memory
-                if hasattr(memory, 'llm') and memory.llm:
-                    # Thử nhiều cách để tìm client
-                    if hasattr(memory.llm, 'client'):
-                        memory.llm.client.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
-                        logger.info(f"✅ Patched llm.client.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
-                    elif hasattr(memory.llm, '_client'):
-                        memory.llm._client.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
-                        logger.info(f"✅ Patched llm._client.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
-                    # Hoặc tìm trong config
-                    elif hasattr(memory.llm, 'config') and memory.llm.config:
-                        if hasattr(memory.llm.config, 'client'):
-                            memory.llm.config.client.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
-                            logger.info(f"✅ Patched llm.config.client.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
-                    # Hoặc tìm bằng cách inspect
-                    else:
-                        import inspect
-                        for attr_name in dir(memory.llm):
-                            if 'client' in attr_name.lower() and not attr_name.startswith('__'):
-                                try:
-                                    attr = getattr(memory.llm, attr_name)
-                                    if hasattr(attr, 'base_url'):
-                                        attr.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
-                                        logger.info(f"✅ Patched llm.{attr_name}.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
-                                        break
-                                except:
-                                    pass
-            except Exception as e:
-                logger.debug(f"Could not patch client: {e}")
         
         memory_instances[user_id] = memory
     return memory_instances[user_id]
