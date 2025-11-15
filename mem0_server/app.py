@@ -125,23 +125,25 @@ if REVERSE_PROXY_URL:
         original_prepare_request = BaseClient._prepare_request
         
         def patched_prepare_request(self, request):
-            """Redirect tất cả requests từ api.openai.com sang reverse proxy"""
+            """Redirect tất cả requests từ api.openai.com sang reverse proxy và thêm headers"""
             if hasattr(request, 'url'):
                 url_str = str(request.url)
+                base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
+                
+                # Redirect URL nếu là api.openai.com
                 if "api.openai.com" in url_str:
-                    # Replace https://api.openai.com/v1 với reverse proxy URL (loại bỏ /v1 để tránh duplicate)
-                    # Hoặc replace https://api.openai.com với reverse proxy URL (không có /v1)
-                    base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
                     if "/v1" in url_str:
                         new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
                     else:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
-                    
-                    # Thêm headers để tránh Cloudflare block
+                    sys.stderr.write(f"[PATCH] Redirected URL: {url_str} → {new_url}\n")
+                    sys.stderr.flush()
+                
+                # Thêm headers cho TẤT CẢ requests đến langhit.com (kể cả đã redirect)
+                if "langhit.com" in str(request.url):
                     if hasattr(request, 'headers'):
                         headers = request.headers
-                        # httpx.Headers object - dùng .update() hoặc set item trực tiếp
                         extra_headers = {}
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -157,11 +159,6 @@ if REVERSE_PROXY_URL:
                         # Update headers
                         if extra_headers:
                             try:
-                                # Debug: log headers hiện tại
-                                current_headers = dict(headers) if hasattr(headers, '__iter__') else {}
-                                sys.stderr.write(f"[PATCH] Current headers before: {list(current_headers.keys())}\n")
-                                sys.stderr.flush()
-                                
                                 if hasattr(headers, 'update'):
                                     headers.update(extra_headers)
                                 elif isinstance(headers, dict):
@@ -170,11 +167,7 @@ if REVERSE_PROXY_URL:
                                     # Fallback: set từng item
                                     for k, v in extra_headers.items():
                                         headers[k] = v
-                                
-                                # Debug: log headers sau khi thêm
-                                final_headers = dict(headers) if hasattr(headers, '__iter__') else {}
                                 sys.stderr.write(f"[PATCH] Added headers to request: {list(extra_headers.keys())}\n")
-                                sys.stderr.write(f"[PATCH] Final headers: {list(final_headers.keys())}\n")
                                 sys.stderr.flush()
                             except Exception as e:
                                 sys.stderr.write(f"[PATCH] Failed to add headers: {e}\n")
@@ -195,89 +188,97 @@ if REVERSE_PROXY_URL:
         original_handle_async_request = AsyncHTTPTransport.handle_async_request
         
         def patched_handle_request(self, request):
-            """Redirect requests trong sync transport"""
-            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+            """Redirect requests trong sync transport và thêm headers"""
+            if hasattr(request, 'url'):
                 url_str = str(request.url)
                 base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
-                if "/v1" in url_str:
-                    new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
-                else:
-                    new_url = url_str.replace("https://api.openai.com", base_proxy_url)
-                request.url = URL(new_url)
                 
-                # Thêm headers để tránh Cloudflare block
-                if hasattr(request, 'headers'):
-                    headers = request.headers
-                    extra_headers = {}
-                    if 'user-agent' not in headers and 'User-Agent' not in headers:
-                        extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    if 'Accept' not in headers:
-                        extra_headers['Accept'] = 'application/json'
-                    if 'Accept-Encoding' not in headers:
-                        extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
-                    if 'Origin' not in headers:
-                        extra_headers['Origin'] = base_proxy_url
-                    if 'Referer' not in headers:
-                        extra_headers['Referer'] = base_proxy_url + '/'
-                    
-                    # Update headers
-                    if extra_headers:
-                        try:
-                            if hasattr(headers, 'update'):
-                                headers.update(extra_headers)
-                            elif isinstance(headers, dict):
-                                headers.update(extra_headers)
-                            else:
-                                for k, v in extra_headers.items():
-                                    headers[k] = v
-                            sys.stderr.write(f"[PATCH] Added headers to transport request: {list(extra_headers.keys())}\n")
-                            sys.stderr.flush()
-                        except Exception as e:
-                            sys.stderr.write(f"[PATCH] Failed to add headers in transport: {e}\n")
-                            sys.stderr.flush()
+                # Redirect URL nếu là api.openai.com
+                if "api.openai.com" in url_str:
+                    if "/v1" in url_str:
+                        new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
+                    else:
+                        new_url = url_str.replace("https://api.openai.com", base_proxy_url)
+                    request.url = URL(new_url)
+                
+                # Thêm headers cho TẤT CẢ requests đến langhit.com
+                if "langhit.com" in str(request.url):
+                    if hasattr(request, 'headers'):
+                        headers = request.headers
+                        extra_headers = {}
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            extra_headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            extra_headers['Origin'] = base_proxy_url
+                        if 'Referer' not in headers:
+                            extra_headers['Referer'] = base_proxy_url + '/'
+                        
+                        # Update headers
+                        if extra_headers:
+                            try:
+                                if hasattr(headers, 'update'):
+                                    headers.update(extra_headers)
+                                elif isinstance(headers, dict):
+                                    headers.update(extra_headers)
+                                else:
+                                    for k, v in extra_headers.items():
+                                        headers[k] = v
+                                sys.stderr.write(f"[PATCH] Added headers to transport request: {list(extra_headers.keys())}\n")
+                                sys.stderr.flush()
+                            except Exception as e:
+                                sys.stderr.write(f"[PATCH] Failed to add headers in transport: {e}\n")
+                                sys.stderr.flush()
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
-            """Redirect requests trong async transport"""
-            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+            """Redirect requests trong async transport và thêm headers"""
+            if hasattr(request, 'url'):
                 url_str = str(request.url)
                 base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
-                if "/v1" in url_str:
-                    new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
-                else:
-                    new_url = url_str.replace("https://api.openai.com", base_proxy_url)
-                request.url = URL(new_url)
                 
-                # Thêm headers để tránh Cloudflare block
-                if hasattr(request, 'headers'):
-                    headers = request.headers
-                    extra_headers = {}
-                    if 'user-agent' not in headers and 'User-Agent' not in headers:
-                        extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    if 'Accept' not in headers:
-                        extra_headers['Accept'] = 'application/json'
-                    if 'Accept-Encoding' not in headers:
-                        extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
-                    if 'Origin' not in headers:
-                        extra_headers['Origin'] = base_proxy_url
-                    if 'Referer' not in headers:
-                        extra_headers['Referer'] = base_proxy_url + '/'
-                    
-                    # Update headers
-                    if extra_headers:
-                        try:
-                            if hasattr(headers, 'update'):
-                                headers.update(extra_headers)
-                            elif isinstance(headers, dict):
-                                headers.update(extra_headers)
-                            else:
-                                for k, v in extra_headers.items():
-                                    headers[k] = v
-                            sys.stderr.write(f"[PATCH] Added headers to transport request: {list(extra_headers.keys())}\n")
-                            sys.stderr.flush()
-                        except Exception as e:
-                            sys.stderr.write(f"[PATCH] Failed to add headers in transport: {e}\n")
-                            sys.stderr.flush()
+                # Redirect URL nếu là api.openai.com
+                if "api.openai.com" in url_str:
+                    if "/v1" in url_str:
+                        new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
+                    else:
+                        new_url = url_str.replace("https://api.openai.com", base_proxy_url)
+                    request.url = URL(new_url)
+                
+                # Thêm headers cho TẤT CẢ requests đến langhit.com
+                if "langhit.com" in str(request.url):
+                    if hasattr(request, 'headers'):
+                        headers = request.headers
+                        extra_headers = {}
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            extra_headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            extra_headers['Origin'] = base_proxy_url
+                        if 'Referer' not in headers:
+                            extra_headers['Referer'] = base_proxy_url + '/'
+                        
+                        # Update headers
+                        if extra_headers:
+                            try:
+                                if hasattr(headers, 'update'):
+                                    headers.update(extra_headers)
+                                elif isinstance(headers, dict):
+                                    headers.update(extra_headers)
+                                else:
+                                    for k, v in extra_headers.items():
+                                        headers[k] = v
+                                sys.stderr.write(f"[PATCH] Added headers to async transport request: {list(extra_headers.keys())}\n")
+                                sys.stderr.flush()
+                            except Exception as e:
+                                sys.stderr.write(f"[PATCH] Failed to add headers in async transport: {e}\n")
+                                sys.stderr.flush()
             return await original_handle_async_request(self, request)
         
         HTTPTransport.handle_request = patched_handle_request
