@@ -7,7 +7,8 @@ const {
   cleanupAbortController,
 } = require('~/server/middleware');
 const { disposeClient, clientRegistry, requestDataMap } = require('~/server/cleanup');
-const { saveMessage } = require('~/models');
+const { saveMessage, getMessages } = require('~/models');
+const Mem0Service = require('~/server/services/Mem0Service');
 
 function createCloseHandler(abortController) {
   return function (manual) {
@@ -306,6 +307,33 @@ const AgentController = async (req, res, next, initializeClient, addTitle) => {
         });
     } else {
       performCleanup();
+    }
+
+    // Send conversation to mem0 for automatic memory creation (background, non-blocking)
+    if (process.env.ENABLE_MEM0 === 'true' && conversationId) {
+      (async () => {
+        try {
+          // Get recent messages from conversation (last 20 messages)
+          const messages = await getMessages({ conversationId }, '-_id -__v -user');
+          if (messages && messages.length > 0) {
+            // Convert to mem0 format
+            const mem0Messages = messages
+              .filter((msg) => msg.text && msg.text.trim())
+              .slice(-20) // Last 20 messages
+              .map((msg) => ({
+                role: msg.isCreatedByUser ? 'user' : 'assistant',
+                content: typeof msg.text === 'string' ? msg.text : JSON.stringify(msg.text),
+              }));
+
+            if (mem0Messages.length > 0) {
+              await Mem0Service.addMemories(userId, mem0Messages);
+              logger.debug(`[AgentController] Sent ${mem0Messages.length} messages to mem0 for user ${userId}`);
+            }
+          }
+        } catch (error) {
+          logger.error('[AgentController] Error sending messages to mem0:', error);
+        }
+      })();
     }
   } catch (error) {
     // Handle error without capturing much scope

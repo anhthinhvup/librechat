@@ -40,7 +40,7 @@ const {
 const { addCacheControl, createContextHandlers } = require('~/app/clients/prompts');
 const { initializeAgent } = require('~/server/services/Endpoints/agents/agent');
 const { spendTokens, spendStructuredTokens } = require('~/models/spendTokens');
-const { getFormattedMemories, deleteMemory, setMemory } = require('~/models');
+const { getFormattedMemories, deleteMemory, setMemory, getAllUserMemories } = require('~/models');
 const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { getProviderConfig } = require('~/server/services/Endpoints');
 const { checkCapability } = require('~/server/services/Config');
@@ -48,6 +48,7 @@ const BaseClient = require('~/app/clients/BaseClient');
 const { getRoleByName } = require('~/models/Role');
 const { loadAgent } = require('~/models/Agent');
 const { getMCPManager } = require('~/config');
+const Mem0Service = require('~/server/services/Mem0Service');
 
 const omitTitleOptions = new Set([
   'stream',
@@ -531,6 +532,17 @@ class AgentClient extends BaseClient {
     });
 
     this.processMemory = processMemory;
+    
+    // Sync mem0 memories to MongoDB in background (non-blocking)
+    if (process.env.ENABLE_MEM0 === 'true') {
+      Mem0Service.syncToMongoDB(userId, {
+        setMemory,
+        getAllUserMemories,
+      }).catch((error) => {
+        logger.error('[AgentClient] Error syncing mem0 to MongoDB:', error);
+      });
+    }
+    
     return withoutKeys;
   }
 
