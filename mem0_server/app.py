@@ -90,16 +90,24 @@ if REVERSE_PROXY_URL:
                                 headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                             if 'Accept' not in headers:
                                 headers['Accept'] = 'application/json'
+                            if 'Accept-Encoding' not in headers:
+                                headers['Accept-Encoding'] = 'gzip, deflate, br'
+                            if 'Origin' not in headers:
+                                headers['Origin'] = base_proxy_url
                             if 'Referer' not in headers:
-                                headers['Referer'] = base_proxy_url
+                                headers['Referer'] = base_proxy_url + '/'
                         else:
                             # httpx.Headers object
                             if 'user-agent' not in headers and 'User-Agent' not in headers:
                                 headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                             if 'Accept' not in headers:
                                 headers['Accept'] = 'application/json'
+                            if 'Accept-Encoding' not in headers:
+                                headers['Accept-Encoding'] = 'gzip, deflate, br'
+                            if 'Origin' not in headers:
+                                headers['Origin'] = base_proxy_url
                             if 'Referer' not in headers:
-                                headers['Referer'] = base_proxy_url
+                                headers['Referer'] = base_proxy_url + '/'
             return original_prepare_request(self, request)
         
         BaseClient._prepare_request = patched_prepare_request
@@ -132,15 +140,23 @@ if REVERSE_PROXY_URL:
                             headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         if 'Accept' not in headers:
                             headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            headers['Origin'] = base_proxy_url
                         if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url
+                            headers['Referer'] = base_proxy_url + '/'
                     else:
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         if 'Accept' not in headers:
                             headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            headers['Origin'] = base_proxy_url
                         if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url
+                            headers['Referer'] = base_proxy_url + '/'
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
@@ -162,15 +178,23 @@ if REVERSE_PROXY_URL:
                             headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         if 'Accept' not in headers:
                             headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            headers['Origin'] = base_proxy_url
                         if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url
+                            headers['Referer'] = base_proxy_url + '/'
                     else:
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         if 'Accept' not in headers:
                             headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            headers['Origin'] = base_proxy_url
                         if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url
+                            headers['Referer'] = base_proxy_url + '/'
             return await original_handle_async_request(self, request)
         
         HTTPTransport.handle_request = patched_handle_request
@@ -235,15 +259,30 @@ try:
                 if 'default_headers' not in kwargs:
                     kwargs['default_headers'] = {}
                 
+                base_proxy_url = REVERSE_PROXY_URL.rstrip('/v1').rstrip('/')
                 headers = kwargs['default_headers']
+                
+                # Headers đầy đủ để bypass Cloudflare
                 if 'User-Agent' not in headers and 'user-agent' not in headers:
                     headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 if 'Accept' not in headers:
                     headers['Accept'] = 'application/json'
                 if 'Accept-Language' not in headers:
                     headers['Accept-Language'] = 'en-US,en;q=0.9'
+                if 'Accept-Encoding' not in headers:
+                    headers['Accept-Encoding'] = 'gzip, deflate, br'
                 if 'Referer' not in headers:
-                    headers['Referer'] = REVERSE_PROXY_URL.rstrip('/v1').rstrip('/')
+                    headers['Referer'] = base_proxy_url + '/'
+                if 'Origin' not in headers:
+                    headers['Origin'] = base_proxy_url
+                if 'Connection' not in headers:
+                    headers['Connection'] = 'keep-alive'
+                if 'Sec-Fetch-Dest' not in headers:
+                    headers['Sec-Fetch-Dest'] = 'empty'
+                if 'Sec-Fetch-Mode' not in headers:
+                    headers['Sec-Fetch-Mode'] = 'cors'
+                if 'Sec-Fetch-Site' not in headers:
+                    headers['Sec-Fetch-Site'] = 'same-origin'
                 
                 sys.stderr.write(f"[PATCH] Added default headers to OpenAI client: {list(headers.keys())}\n")
                 sys.stderr.flush()
