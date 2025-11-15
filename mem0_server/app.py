@@ -12,9 +12,43 @@ import logging
 import openai
 import httpx
 import json
+import requests
+from typing import Dict, Any, List
 
-# Không dùng reverse proxy - dùng API chính thức của OpenAI
-# Bỏ tất cả patch vì dùng API chính thức
+# Cấu hình reverse proxy
+OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+# Custom LLM Provider dùng requests/httpx trực tiếp với reverse proxy
+class CustomOpenAIProvider:
+    """Custom LLM provider dùng requests/httpx trực tiếp, không dùng thư viện OpenAI"""
+    
+    def __init__(self, api_key: str, base_url: str, model: str = "gpt-4o-mini"):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.session = requests.Session()
+    
+    def chat_completions(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
+        """Gọi chat/completions API"""
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
+        response = self.session.post(url, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        return response.json()
+    
+    def __call__(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        """Wrapper để tương thích với mem0"""
+        result = self.chat_completions(messages, **kwargs)
+        return result["choices"][0]["message"]["content"]
 
 try:
     from mem0 import Memory
@@ -35,8 +69,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 memory_instances: Dict[str, Memory] = {}
 
@@ -59,16 +91,23 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if OPENAI_API_KEY:
-            llm_config_dict = {
-                "model": "gpt-4o-mini",
-                "api_key": OPENAI_API_KEY,
-            }
-            # KHÔNG thêm base_url vào config dict
-            # mem0 sẽ tự tạo client, sau đó chúng ta patch
+        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
+            # Dùng custom provider với requests/httpx trực tiếp
+            custom_provider = CustomOpenAIProvider(
+                api_key=OPENAI_API_KEY,
+                base_url=OPENAI_API_BASE_URL,
+                model="gpt-4o-mini"
+            )
+            # Mem0 có thể nhận custom provider
+            config["llm"] = custom_provider
+        elif OPENAI_API_KEY:
+            # Fallback: dùng OpenAI provider nếu không có reverse proxy
             config["llm"] = {
                 "provider": "openai",
-                "config": llm_config_dict
+                "config": {
+                    "model": "gpt-4o-mini",
+                    "api_key": OPENAI_API_KEY,
+                }
             }
         memory = Memory.from_config(config)
         
