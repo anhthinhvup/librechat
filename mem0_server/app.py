@@ -16,8 +16,19 @@ import requests
 from typing import Dict, Any, List
 
 # Cấu hình reverse proxy
+# Lưu giá trị TRƯỚC KHI unset để mem0 không đọc
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+# Unset env để mem0 không đọc base_url
+if OPENAI_API_BASE_URL:
+    if "OPENAI_API_BASE_URL" in os.environ:
+        del os.environ["OPENAI_API_BASE_URL"]
+    if "OPENAI_BASE_URL" in os.environ:
+        del os.environ["OPENAI_BASE_URL"]
+    # Giữ lại OPENAI_REVERSE_PROXY để code đọc được
+    if "OPENAI_REVERSE_PROXY" not in os.environ and OPENAI_API_BASE_URL:
+        os.environ["OPENAI_REVERSE_PROXY"] = OPENAI_API_BASE_URL
 
 # Custom LLM Provider dùng requests/httpx trực tiếp với reverse proxy
 class CustomOpenAIProvider:
