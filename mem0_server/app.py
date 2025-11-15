@@ -13,7 +13,14 @@ import openai
 import httpx
 
 # Patch TRƯỚC KHI import Memory
+# Lưu base_url nhưng không set vào env để mem0 không đọc
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
+# Unset trong process này để mem0 không đọc
+if OPENAI_API_BASE_URL:
+    if "OPENAI_API_BASE_URL" in os.environ:
+        del os.environ["OPENAI_API_BASE_URL"]
+    if "OPENAI_REVERSE_PROXY" in os.environ:
+        del os.environ["OPENAI_REVERSE_PROXY"]
 
 # Patch httpx client để dùng reverse proxy
 if OPENAI_API_BASE_URL:
@@ -34,13 +41,21 @@ if OPENAI_API_BASE_URL:
         return await original_httpx_async_request(self, method, url, **kwargs)
     
     def patched_httpx_send(self, request, **kwargs):
-        if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-            request.url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+        if hasattr(request, 'url'):
+            url_str = str(request.url)
+            if "api.openai.com" in url_str:
+                new_url = url_str.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+                from httpx import URL
+                request.url = URL(new_url)
         return original_httpx_send(self, request, **kwargs)
     
     async def patched_httpx_async_send(self, request, **kwargs):
-        if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-            request.url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+        if hasattr(request, 'url'):
+            url_str = str(request.url)
+            if "api.openai.com" in url_str:
+                new_url = url_str.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+                from httpx import URL
+                request.url = URL(new_url)
         return await original_httpx_async_send(self, request, **kwargs)
     
     httpx.Client.request = patched_httpx_request
