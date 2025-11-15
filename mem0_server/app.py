@@ -209,15 +209,19 @@ def get_memory(user_id: str) -> Memory:
                     "collection_name": f"mem0_{user_id}",
                     "path": "/app/data/qdrant",
                 }
-            },
-            # Dùng local embedding model - KHÔNG tốn quota
-            "embedder": {
-                "provider": "sentence-transformers",
-                "config": {
-                    "model": "all-MiniLM-L6-v2",  # Model nhẹ, miễn phí
-                }
             }
         }
+        
+        # Dùng OpenAI embedder nếu có API key
+        # httpx transport đã được patch để redirect sang reverse proxy
+        if OPENAI_API_KEY:
+            config["embedder"] = {
+                "provider": "openai",
+                "config": {
+                    "model": "text-embedding-3-small",  # Model nhẹ, rẻ
+                    "api_key": OPENAI_API_KEY,
+                }
+            }
         if OPENAI_API_KEY:
             # Dùng OpenAI provider
             # KHÔNG set base_url - httpx transport đã được patch để redirect
