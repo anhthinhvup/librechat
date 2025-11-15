@@ -19,44 +19,7 @@ from typing import Dict, Any, List
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_API_BASE_URL = None  # Không dùng reverse proxy
 
-# Custom LLM Provider dùng requests/httpx trực tiếp với reverse proxy
-class CustomLLMProvider:
-    """Custom LLM provider dùng requests/httpx trực tiếp, không dùng thư viện OpenAI"""
-    
-    def __init__(self, api_key: str, base_url: str, model: str = "gpt-4o-mini"):
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.session = requests.Session()
-        # Logger sẽ được khởi tạo sau
-        import logging
-        logging.getLogger(__name__).info(f"✅ Custom LLM Provider initialized: {self.base_url}")
-    
-    def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        """Generate response từ messages - interface cho mem0"""
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            **kwargs
-        }
-        try:
-            response = self.session.post(url, headers=headers, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Custom LLM Provider error: {e}")
-            raise
-    
-    def __call__(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        """Wrapper để tương thích với mem0"""
-        return self.generate(messages, **kwargs)
+# Không dùng custom provider - dùng OpenAI provider trực tiếp
 
 try:
     from mem0 import Memory
