@@ -81,10 +81,25 @@ if REVERSE_PROXY_URL:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
                     
-                    # Thêm User-Agent để tránh Cloudflare block
+                    # Thêm headers để tránh Cloudflare block
                     if hasattr(request, 'headers'):
-                        if 'user-agent' not in request.headers:
-                            request.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        headers = request.headers
+                        # httpx headers là Headers object, cần dùng .update() hoặc set item
+                        if isinstance(headers, dict):
+                            if 'user-agent' not in headers and 'User-Agent' not in headers:
+                                headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                            if 'Accept' not in headers:
+                                headers['Accept'] = 'application/json'
+                            if 'Referer' not in headers:
+                                headers['Referer'] = base_proxy_url
+                        else:
+                            # httpx.Headers object
+                            if 'user-agent' not in headers and 'User-Agent' not in headers:
+                                headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                            if 'Accept' not in headers:
+                                headers['Accept'] = 'application/json'
+                            if 'Referer' not in headers:
+                                headers['Referer'] = base_proxy_url
             return original_prepare_request(self, request)
         
         BaseClient._prepare_request = patched_prepare_request
@@ -109,10 +124,23 @@ if REVERSE_PROXY_URL:
                     new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                 request.url = URL(new_url)
                 
-                # Thêm User-Agent để tránh Cloudflare block
+                # Thêm headers để tránh Cloudflare block
                 if hasattr(request, 'headers'):
-                    if 'user-agent' not in request.headers:
-                        request.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    headers = request.headers
+                    if isinstance(headers, dict):
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            headers['Accept'] = 'application/json'
+                        if 'Referer' not in headers:
+                            headers['Referer'] = base_proxy_url
+                    else:
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            headers['Accept'] = 'application/json'
+                        if 'Referer' not in headers:
+                            headers['Referer'] = base_proxy_url
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
@@ -126,10 +154,23 @@ if REVERSE_PROXY_URL:
                     new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                 request.url = URL(new_url)
                 
-                # Thêm User-Agent để tránh Cloudflare block
+                # Thêm headers để tránh Cloudflare block
                 if hasattr(request, 'headers'):
-                    if 'user-agent' not in request.headers:
-                        request.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    headers = request.headers
+                    if isinstance(headers, dict):
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            headers['Accept'] = 'application/json'
+                        if 'Referer' not in headers:
+                            headers['Referer'] = base_proxy_url
+                    else:
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            headers['Accept'] = 'application/json'
+                        if 'Referer' not in headers:
+                            headers['Referer'] = base_proxy_url
             return await original_handle_async_request(self, request)
         
         HTTPTransport.handle_request = patched_handle_request
@@ -182,6 +223,39 @@ try:
     
     sys.stderr.write(f"[PATCH] Total patched modules: {patched_count}\n")
     sys.stderr.flush()
+    
+    # Patch OpenAI client để thêm default headers tránh Cloudflare block
+    if REVERSE_PROXY_URL:
+        try:
+            import openai
+            original_openai_init = openai.OpenAI.__init__
+            
+            def patched_openai_init(self, *args, **kwargs):
+                # Thêm default headers để tránh Cloudflare block
+                if 'default_headers' not in kwargs:
+                    kwargs['default_headers'] = {}
+                
+                headers = kwargs['default_headers']
+                if 'User-Agent' not in headers and 'user-agent' not in headers:
+                    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                if 'Accept' not in headers:
+                    headers['Accept'] = 'application/json'
+                if 'Accept-Language' not in headers:
+                    headers['Accept-Language'] = 'en-US,en;q=0.9'
+                if 'Referer' not in headers:
+                    headers['Referer'] = REVERSE_PROXY_URL.rstrip('/v1').rstrip('/')
+                
+                sys.stderr.write(f"[PATCH] Added default headers to OpenAI client: {list(headers.keys())}\n")
+                sys.stderr.flush()
+                
+                return original_openai_init(self, *args, **kwargs)
+            
+            openai.OpenAI.__init__ = patched_openai_init
+            sys.stderr.write("[PATCH] ✅ Patched OpenAI.__init__ to add default headers\n")
+            sys.stderr.flush()
+        except Exception as e:
+            sys.stderr.write(f"[PATCH] ❌ Failed to patch OpenAI.__init__: {e}\n")
+            sys.stderr.flush()
     
 except ImportError as e:
     sys.stderr.write(f"[PATCH] ❌ Failed to import mem0: {e}\n")
