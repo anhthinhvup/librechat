@@ -64,16 +64,16 @@ def get_memory(user_id: str) -> Memory:
             }
         }
         if USE_CUSTOM_PROVIDER and CUSTOM_LLM_ENDPOINT:
-            # Dùng custom provider với HTTP endpoint
+            # Mem0 có thể không hỗ trợ "custom" provider trực tiếp
+            # Thử dùng OpenAI provider nhưng patch client sau
             config["llm"] = {
-                "provider": "custom",
+                "provider": "openai",
                 "config": {
-                    "endpoint": CUSTOM_LLM_ENDPOINT.rstrip("/") + "/chat/completions",
-                    "api_key": CUSTOM_LLM_API_KEY,
                     "model": "gpt-4o-mini",
+                    "api_key": CUSTOM_LLM_API_KEY,
                 }
             }
-            logger.info(f"✅ Using custom LLM provider: {CUSTOM_LLM_ENDPOINT}")
+            logger.info(f"✅ Will use custom endpoint: {CUSTOM_LLM_ENDPOINT}")
         elif OPENAI_API_KEY:
             # Fallback: dùng OpenAI provider
             config["llm"] = {
@@ -84,6 +84,39 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         memory = Memory.from_config(config)
+        
+        # Patch client sau khi Memory được tạo để dùng custom endpoint
+        if USE_CUSTOM_PROVIDER and CUSTOM_LLM_ENDPOINT:
+            try:
+                # Tìm và patch OpenAI client trong memory
+                if hasattr(memory, 'llm') and memory.llm:
+                    # Thử nhiều cách để tìm client
+                    if hasattr(memory.llm, 'client'):
+                        memory.llm.client.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
+                        logger.info(f"✅ Patched llm.client.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
+                    elif hasattr(memory.llm, '_client'):
+                        memory.llm._client.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
+                        logger.info(f"✅ Patched llm._client.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
+                    # Hoặc tìm trong config
+                    elif hasattr(memory.llm, 'config') and memory.llm.config:
+                        if hasattr(memory.llm.config, 'client'):
+                            memory.llm.config.client.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
+                            logger.info(f"✅ Patched llm.config.client.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
+                    # Hoặc tìm bằng cách inspect
+                    else:
+                        import inspect
+                        for attr_name in dir(memory.llm):
+                            if 'client' in attr_name.lower() and not attr_name.startswith('__'):
+                                try:
+                                    attr = getattr(memory.llm, attr_name)
+                                    if hasattr(attr, 'base_url'):
+                                        attr.base_url = CUSTOM_LLM_ENDPOINT.rstrip("/")
+                                        logger.info(f"✅ Patched llm.{attr_name}.base_url to {CUSTOM_LLM_ENDPOINT} for user {user_id}")
+                                        break
+                                except:
+                                    pass
+            except Exception as e:
+                logger.debug(f"Could not patch client: {e}")
         
         memory_instances[user_id] = memory
     return memory_instances[user_id]
