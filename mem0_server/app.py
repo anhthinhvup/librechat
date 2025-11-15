@@ -84,30 +84,35 @@ if REVERSE_PROXY_URL:
                     # Thêm headers để tránh Cloudflare block
                     if hasattr(request, 'headers'):
                         headers = request.headers
-                        # httpx headers là Headers object, cần dùng .update() hoặc set item
-                        if isinstance(headers, dict):
-                            if 'user-agent' not in headers and 'User-Agent' not in headers:
-                                headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                            if 'Accept' not in headers:
-                                headers['Accept'] = 'application/json'
-                            if 'Accept-Encoding' not in headers:
-                                headers['Accept-Encoding'] = 'gzip, deflate, br'
-                            if 'Origin' not in headers:
-                                headers['Origin'] = base_proxy_url
-                            if 'Referer' not in headers:
-                                headers['Referer'] = base_proxy_url + '/'
-                        else:
-                            # httpx.Headers object
-                            if 'user-agent' not in headers and 'User-Agent' not in headers:
-                                headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                            if 'Accept' not in headers:
-                                headers['Accept'] = 'application/json'
-                            if 'Accept-Encoding' not in headers:
-                                headers['Accept-Encoding'] = 'gzip, deflate, br'
-                            if 'Origin' not in headers:
-                                headers['Origin'] = base_proxy_url
-                            if 'Referer' not in headers:
-                                headers['Referer'] = base_proxy_url + '/'
+                        # httpx.Headers object - dùng .update() hoặc set item trực tiếp
+                        extra_headers = {}
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            extra_headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            extra_headers['Origin'] = base_proxy_url
+                        if 'Referer' not in headers:
+                            extra_headers['Referer'] = base_proxy_url + '/'
+                        
+                        # Update headers
+                        if extra_headers:
+                            try:
+                                if hasattr(headers, 'update'):
+                                    headers.update(extra_headers)
+                                elif isinstance(headers, dict):
+                                    headers.update(extra_headers)
+                                else:
+                                    # Fallback: set từng item
+                                    for k, v in extra_headers.items():
+                                        headers[k] = v
+                                sys.stderr.write(f"[PATCH] Added headers to request: {list(extra_headers.keys())}\n")
+                                sys.stderr.flush()
+                            except Exception as e:
+                                sys.stderr.write(f"[PATCH] Failed to add headers: {e}\n")
+                                sys.stderr.flush()
             return original_prepare_request(self, request)
         
         BaseClient._prepare_request = patched_prepare_request
@@ -135,28 +140,33 @@ if REVERSE_PROXY_URL:
                 # Thêm headers để tránh Cloudflare block
                 if hasattr(request, 'headers'):
                     headers = request.headers
-                    if isinstance(headers, dict):
-                        if 'user-agent' not in headers and 'User-Agent' not in headers:
-                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                        if 'Accept' not in headers:
-                            headers['Accept'] = 'application/json'
-                        if 'Accept-Encoding' not in headers:
-                            headers['Accept-Encoding'] = 'gzip, deflate, br'
-                        if 'Origin' not in headers:
-                            headers['Origin'] = base_proxy_url
-                        if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url + '/'
-                    else:
-                        if 'user-agent' not in headers and 'User-Agent' not in headers:
-                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                        if 'Accept' not in headers:
-                            headers['Accept'] = 'application/json'
-                        if 'Accept-Encoding' not in headers:
-                            headers['Accept-Encoding'] = 'gzip, deflate, br'
-                        if 'Origin' not in headers:
-                            headers['Origin'] = base_proxy_url
-                        if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url + '/'
+                    extra_headers = {}
+                    if 'user-agent' not in headers and 'User-Agent' not in headers:
+                        extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    if 'Accept' not in headers:
+                        extra_headers['Accept'] = 'application/json'
+                    if 'Accept-Encoding' not in headers:
+                        extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                    if 'Origin' not in headers:
+                        extra_headers['Origin'] = base_proxy_url
+                    if 'Referer' not in headers:
+                        extra_headers['Referer'] = base_proxy_url + '/'
+                    
+                    # Update headers
+                    if extra_headers:
+                        try:
+                            if hasattr(headers, 'update'):
+                                headers.update(extra_headers)
+                            elif isinstance(headers, dict):
+                                headers.update(extra_headers)
+                            else:
+                                for k, v in extra_headers.items():
+                                    headers[k] = v
+                            sys.stderr.write(f"[PATCH] Added headers to transport request: {list(extra_headers.keys())}\n")
+                            sys.stderr.flush()
+                        except Exception as e:
+                            sys.stderr.write(f"[PATCH] Failed to add headers in transport: {e}\n")
+                            sys.stderr.flush()
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
@@ -173,28 +183,33 @@ if REVERSE_PROXY_URL:
                 # Thêm headers để tránh Cloudflare block
                 if hasattr(request, 'headers'):
                     headers = request.headers
-                    if isinstance(headers, dict):
-                        if 'user-agent' not in headers and 'User-Agent' not in headers:
-                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                        if 'Accept' not in headers:
-                            headers['Accept'] = 'application/json'
-                        if 'Accept-Encoding' not in headers:
-                            headers['Accept-Encoding'] = 'gzip, deflate, br'
-                        if 'Origin' not in headers:
-                            headers['Origin'] = base_proxy_url
-                        if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url + '/'
-                    else:
-                        if 'user-agent' not in headers and 'User-Agent' not in headers:
-                            headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                        if 'Accept' not in headers:
-                            headers['Accept'] = 'application/json'
-                        if 'Accept-Encoding' not in headers:
-                            headers['Accept-Encoding'] = 'gzip, deflate, br'
-                        if 'Origin' not in headers:
-                            headers['Origin'] = base_proxy_url
-                        if 'Referer' not in headers:
-                            headers['Referer'] = base_proxy_url + '/'
+                    extra_headers = {}
+                    if 'user-agent' not in headers and 'User-Agent' not in headers:
+                        extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    if 'Accept' not in headers:
+                        extra_headers['Accept'] = 'application/json'
+                    if 'Accept-Encoding' not in headers:
+                        extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                    if 'Origin' not in headers:
+                        extra_headers['Origin'] = base_proxy_url
+                    if 'Referer' not in headers:
+                        extra_headers['Referer'] = base_proxy_url + '/'
+                    
+                    # Update headers
+                    if extra_headers:
+                        try:
+                            if hasattr(headers, 'update'):
+                                headers.update(extra_headers)
+                            elif isinstance(headers, dict):
+                                headers.update(extra_headers)
+                            else:
+                                for k, v in extra_headers.items():
+                                    headers[k] = v
+                            sys.stderr.write(f"[PATCH] Added headers to transport request: {list(extra_headers.keys())}\n")
+                            sys.stderr.flush()
+                        except Exception as e:
+                            sys.stderr.write(f"[PATCH] Failed to add headers in transport: {e}\n")
+                            sys.stderr.flush()
             return await original_handle_async_request(self, request)
         
         HTTPTransport.handle_request = patched_handle_request
