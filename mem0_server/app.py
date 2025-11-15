@@ -79,10 +79,15 @@ try:
             from mem0.config import OpenAIConfig
             original_config_init = OpenAIConfig.__init__
             def patched_config_init(self, *args, **kwargs):
-                # Loại bỏ base_url và các biến liên quan
+                # Loại bỏ base_url và các biến liên quan TRƯỚC KHI gọi original_init
                 kwargs.pop("base_url", None)
                 kwargs.pop("api_base", None)
                 kwargs.pop("api_base_url", None)
+                # Loại bỏ từ config dict nếu có
+                if args and isinstance(args[0], dict):
+                    args[0].pop("base_url", None)
+                    args[0].pop("api_base", None)
+                    args[0].pop("api_base_url", None)
                 result = original_config_init(self, *args, **kwargs)
                 # Set base_url cho client SAU KHI init
                 if hasattr(self, "client") and self.client:
@@ -125,6 +130,14 @@ def get_memory(user_id: str) -> Memory:
                 "config": {
                     "collection_name": f"mem0_{user_id}",
                     "path": "/app/data/qdrant",
+                }
+            },
+            # Dùng local embedding model - KHÔNG tốn quota
+            "embedder": {
+                "provider": "sentence-transformers",
+                "config": {
+                    "model": "all-MiniLM-L6-v2",  # Model nhẹ, miễn phí
+                    # Hoặc dùng model khác: "paraphrase-MiniLM-L6-v2", "all-mpnet-base-v2"
                 }
             }
         }
