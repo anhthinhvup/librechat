@@ -28,7 +28,41 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Dùng API chính thức của OpenAI - không cần patch
+# Custom LLM Provider dùng requests/httpx trực tiếp với DeepSeek API (miễn phí)
+class CustomOpenAIProvider:
+    """Custom LLM provider dùng HTTP request trực tiếp, hỗ trợ DeepSeek và OpenAI"""
+    
+    def __init__(self, api_key: str, base_url: str, model: str = "deepseek-chat"):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.session = requests.Session()
+        logger.info(f"✅ Custom LLM Provider initialized: {self.base_url} (model: {self.model})")
+    
+    def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        """Generate response từ messages - interface cho mem0"""
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
+        try:
+            response = self.session.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Custom LLM Provider error: {e}")
+            raise
+    
+    def __call__(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        """Wrapper để tương thích với mem0"""
+        return self.generate(messages, **kwargs)
 
 app = FastAPI(title="Mem0 API Server", version="1.0.0")
 
@@ -71,8 +105,9 @@ def get_memory(user_id: str) -> Memory:
             )
             config["llm"] = custom_provider
             logger.info(f"✅ Using DeepSeek API (free) for user {user_id}")
-        elif OPENAI_API_KEY:
+        elif os.getenv("OPENAI_API_KEY", ""):
             # Fallback: dùng OpenAI API
+            OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
             custom_provider = CustomOpenAIProvider(
                 api_key=OPENAI_API_KEY,
                 base_url="https://api.openai.com/v1",
