@@ -80,6 +80,11 @@ if REVERSE_PROXY_URL:
                     else:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
+                    
+                    # Thêm User-Agent để tránh Cloudflare block
+                    if hasattr(request, 'headers'):
+                        if 'user-agent' not in request.headers:
+                            request.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             return original_prepare_request(self, request)
         
         BaseClient._prepare_request = patched_prepare_request
@@ -103,6 +108,11 @@ if REVERSE_PROXY_URL:
                 else:
                     new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                 request.url = URL(new_url)
+                
+                # Thêm User-Agent để tránh Cloudflare block
+                if hasattr(request, 'headers'):
+                    if 'user-agent' not in request.headers:
+                        request.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
@@ -115,6 +125,11 @@ if REVERSE_PROXY_URL:
                 else:
                     new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                 request.url = URL(new_url)
+                
+                # Thêm User-Agent để tránh Cloudflare block
+                if hasattr(request, 'headers'):
+                    if 'user-agent' not in request.headers:
+                        request.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             return await original_handle_async_request(self, request)
         
         HTTPTransport.handle_request = patched_handle_request
