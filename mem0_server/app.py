@@ -102,8 +102,8 @@ async def add_memory(request: AddMemoryRequest):
         # Convert messages to mem0 format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
         
-        # Add memories
-        result = memory.add(messages)
+        # Add memories with user_id parameter
+        result = memory.add(messages, user_id=request.user_id)
         
         return {
             "success": True,
@@ -120,7 +120,8 @@ async def get_memories(user_id: str, limit: Optional[int] = 10):
     """Get all memories for a user"""
     try:
         memory = get_memory(user_id)
-        memories = memory.search_all(limit=limit)
+        # Use get_all() instead of search_all()
+        memories = memory.get_all(user_id=user_id, limit=limit)
         
         return {
             "success": True,
@@ -137,7 +138,7 @@ async def search_memories(request: SearchMemoryRequest):
     """Search memories for a user"""
     try:
         memory = get_memory(request.user_id)
-        results = memory.search(request.query, limit=request.limit)
+        results = memory.search(request.query, user_id=request.user_id, limit=request.limit)
         
         return {
             "success": True,
@@ -158,10 +159,10 @@ async def delete_memory(request: DeleteMemoryRequest):
         
         if request.memory_id:
             # Delete specific memory
-            result = memory.delete(ids=[request.memory_id])
+            result = memory.delete(ids=[request.memory_id], user_id=request.user_id)
         else:
-            # Delete all memories
-            result = memory.delete_all()
+            # Delete all memories for user
+            result = memory.delete_all(user_id=request.user_id)
         
         return {
             "success": True,
