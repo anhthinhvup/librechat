@@ -10,35 +10,53 @@ import os
 import logging
 
 import openai
+import httpx
 
-# Patch OpenAI client TRƯỚC KHI import Memory
+# Patch TRƯỚC KHI import Memory
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
+
+# Patch httpx client để dùng reverse proxy
 if OPENAI_API_BASE_URL:
+    # Patch httpx để redirect requests
+    original_httpx_request = httpx.Client.request
+    original_httpx_async_request = httpx.AsyncClient.request
+    
+    def patched_httpx_request(self, method, url, **kwargs):
+        if isinstance(url, str) and "api.openai.com" in url:
+            url = url.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+        return original_httpx_request(self, method, url, **kwargs)
+    
+    async def patched_httpx_async_request(self, method, url, **kwargs):
+        if isinstance(url, str) and "api.openai.com" in url:
+            url = url.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+        return await original_httpx_async_request(self, method, url, **kwargs)
+    
+    httpx.Client.request = patched_httpx_request
+    httpx.AsyncClient.request = patched_httpx_async_request
+    
+    # Patch OpenAI client
     original_openai_init = openai.OpenAI.__init__
     def patched_openai_init(self, *args, **kwargs):
-        if "base_url" not in kwargs:
+        if "base_url" not in kwargs and OPENAI_API_BASE_URL:
             kwargs["base_url"] = OPENAI_API_BASE_URL
         return original_openai_init(self, *args, **kwargs)
     openai.OpenAI.__init__ = patched_openai_init
+    
+    logger.info(f"✅ Patched httpx and OpenAI to use: {OPENAI_API_BASE_URL}")
 
 try:
     from mem0 import Memory
-    # Patch OpenAIConfig sau khi import Memory
+    # Patch OpenAIConfig sau khi import
     if OPENAI_API_BASE_URL:
         try:
             from mem0.config import OpenAIConfig
             original_config_init = OpenAIConfig.__init__
             def patched_config_init(self, *args, **kwargs):
+                # Loại bỏ base_url
                 kwargs.pop("base_url", None)
-                result = original_config_init(self, *args, **kwargs)
-                # Set base_url cho client sau khi init
-                if hasattr(self, "client") and self.client:
-                    self.client.base_url = OPENAI_API_BASE_URL
-                elif hasattr(self, "_client") and self._client:
-                    self._client.base_url = OPENAI_API_BASE_URL
-                return result
+                return original_config_init(self, *args, **kwargs)
             OpenAIConfig.__init__ = patched_config_init
-        except (ImportError, AttributeError):
+        except:
             pass
 except ImportError:
     raise ImportError("mem0ai package not installed")
@@ -57,9 +75,6 @@ app.add_middleware(
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-
-if OPENAI_API_BASE_URL:
-    logger.info(f"✅ Patched to use reverse proxy: {OPENAI_API_BASE_URL}")
 
 memory_instances: Dict[str, Memory] = {}
 
@@ -84,15 +99,20 @@ def get_memory(user_id: str) -> Memory:
             }
         memory = Memory.from_config(config)
         
-        # Patch client sau khi Memory được tạo (nếu cần)
+        # Patch client sau khi Memory được tạo
         if OPENAI_API_BASE_URL:
             try:
-                # Tìm và patch client trong memory object
+                # Tìm client trong memory và set base_url
                 if hasattr(memory, 'llm') and memory.llm:
                     if hasattr(memory.llm, 'client'):
                         memory.llm.client.base_url = OPENAI_API_BASE_URL
                     elif hasattr(memory.llm, '_client'):
                         memory.llm._client.base_url = OPENAI_API_BASE_URL
+                # Hoặc tìm trong config
+                if hasattr(memory, 'config') and memory.config:
+                    llm_config = memory.config.get('llm')
+                    if llm_config and hasattr(llm_config, 'client'):
+                        llm_config.client.base_url = OPENAI_API_BASE_URL
             except Exception as e:
                 logger.debug(f"Could not patch client: {e}")
         
