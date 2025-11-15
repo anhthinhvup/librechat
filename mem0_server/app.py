@@ -15,9 +15,10 @@ import json
 import requests
 from typing import Dict, Any, List
 
-# Dùng OpenAI API với HTTP request trực tiếp (không dùng thư viện OpenAI)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_API_BASE_URL = "https://api.openai.com/v1"  # OpenAI API chính thức
+# Dùng DeepSeek API (miễn phí, OpenAI-compatible) với HTTP request trực tiếp
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+DEEPSEEK_API_BASE_URL = os.getenv("DEEPSEEK_API_BASE_URL", "https://api.deepseek.com")
+USE_DEEPSEEK = os.getenv("USE_DEEPSEEK", "true").lower() == "true"
 
 try:
     from mem0 import Memory
@@ -61,16 +62,24 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if OPENAI_API_KEY:
-            # Dùng custom provider với HTTP request trực tiếp (không dùng thư viện OpenAI)
+        if USE_DEEPSEEK and DEEPSEEK_API_KEY:
+            # Dùng DeepSeek API (miễn phí, OpenAI-compatible)
+            custom_provider = CustomOpenAIProvider(
+                api_key=DEEPSEEK_API_KEY,
+                base_url=DEEPSEEK_API_BASE_URL,
+                model="deepseek-chat"  # DeepSeek model
+            )
+            config["llm"] = custom_provider
+            logger.info(f"✅ Using DeepSeek API (free) for user {user_id}")
+        elif OPENAI_API_KEY:
+            # Fallback: dùng OpenAI API
             custom_provider = CustomOpenAIProvider(
                 api_key=OPENAI_API_KEY,
-                base_url=OPENAI_API_BASE_URL,
+                base_url="https://api.openai.com/v1",
                 model="gpt-4o-mini"
             )
-            # Mem0 có thể nhận custom provider trực tiếp
             config["llm"] = custom_provider
-            logger.info(f"✅ Using custom HTTP client for OpenAI API for user {user_id}")
+            logger.info(f"✅ Using OpenAI API for user {user_id}")
         memory = Memory.from_config(config)
         
         memory_instances[user_id] = memory
