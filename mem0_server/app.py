@@ -88,29 +88,56 @@ try:
     if OPENAI_API_BASE_URL:
         try:
             from mem0.config import OpenAIConfig
+            import inspect
             original_config_init = OpenAIConfig.__init__
+            sig = inspect.signature(original_config_init)
+            
             def patched_config_init(self, *args, **kwargs):
-                # Loại bỏ base_url từ mọi nơi có thể
-                kwargs.pop("base_url", None)
-                kwargs.pop("api_base", None)
-                kwargs.pop("api_base_url", None)
-                # Loại bỏ từ args (có thể là dict hoặc tuple)
-                new_args = []
-                for arg in args:
-                    if isinstance(arg, dict):
-                        arg = arg.copy()  # Tạo copy để không modify original
-                        arg.pop("base_url", None)
-                        arg.pop("api_base", None)
-                        arg.pop("api_base_url", None)
-                        # Loại bỏ từ nested config nếu có
-                        if "config" in arg and isinstance(arg["config"], dict):
-                            arg["config"].pop("base_url", None)
-                            arg["config"].pop("api_base", None)
-                            arg["config"].pop("api_base_url", None)
-                    new_args.append(arg)
-                args = tuple(new_args)
-                # Gọi original với args đã clean
-                result = original_config_init(self, *args, **kwargs)
+                # Kiểm tra signature để xem có nhận base_url không
+                if 'base_url' in sig.parameters:
+                    # Nếu có, loại bỏ
+                    kwargs.pop("base_url", None)
+                else:
+                    # Nếu không có trong signature, mem0 không hỗ trợ
+                    # Loại bỏ từ mọi nơi
+                    kwargs.pop("base_url", None)
+                    kwargs.pop("api_base", None)
+                    kwargs.pop("api_base_url", None)
+                    # Loại bỏ từ args
+                    new_args = []
+                    for arg in args:
+                        if isinstance(arg, dict):
+                            arg = dict(arg)  # Tạo copy
+                            arg.pop("base_url", None)
+                            arg.pop("api_base", None)
+                            arg.pop("api_base_url", None)
+                            if "config" in arg and isinstance(arg["config"], dict):
+                                arg["config"] = dict(arg["config"])
+                                arg["config"].pop("base_url", None)
+                                arg["config"].pop("api_base", None)
+                                arg["config"].pop("api_base_url", None)
+                        new_args.append(arg)
+                    args = tuple(new_args)
+                
+                # Gọi original
+                try:
+                    result = original_config_init(self, *args, **kwargs)
+                except TypeError as e:
+                    if "base_url" in str(e):
+                        # Nếu vẫn lỗi, thử lại không có base_url
+                        kwargs.pop("base_url", None)
+                        new_args = []
+                        for arg in args:
+                            if isinstance(arg, dict):
+                                arg = {k: v for k, v in arg.items() if k not in ["base_url", "api_base", "api_base_url"]}
+                                if "config" in arg and isinstance(arg["config"], dict):
+                                    arg["config"] = {k: v for k, v in arg["config"].items() if k not in ["base_url", "api_base", "api_base_url"]}
+                            new_args.append(arg)
+                        args = tuple(new_args)
+                        result = original_config_init(self, *args, **kwargs)
+                    else:
+                        raise
+                
                 # Set base_url cho client SAU KHI init
                 if hasattr(self, "client") and self.client:
                     self.client.base_url = OPENAI_API_BASE_URL
@@ -154,7 +181,7 @@ def get_memory(user_id: str) -> Memory:
                     "path": "/app/data/qdrant",
                 }
             },
-            # Dùng local embedding model - KHÔNG tốn quota
+            # Dùng local embedding model - KHÔNG tốn quota, KHÔNG cần OpenAI
             "embedder": {
                 "provider": "sentence-transformers",
                 "config": {
