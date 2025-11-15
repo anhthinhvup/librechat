@@ -15,11 +15,11 @@ import json
 import requests
 from typing import Dict, Any, List
 
-# Dùng API chính thức của OpenAI - không dùng reverse proxy
+# Cấu hình custom provider cho mem0
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_API_BASE_URL = None  # Không dùng reverse proxy
-
-# Không dùng custom provider - dùng OpenAI provider trực tiếp
+CUSTOM_LLM_ENDPOINT = os.getenv("CUSTOM_LLM_ENDPOINT", "") or os.getenv("OPENAI_REVERSE_PROXY", "")
+CUSTOM_LLM_API_KEY = os.getenv("CUSTOM_LLM_API_KEY", "") or OPENAI_API_KEY
+USE_CUSTOM_PROVIDER = os.getenv("MEM0_LLM_PROVIDER", "").lower() == "custom" or bool(CUSTOM_LLM_ENDPOINT)
 
 try:
     from mem0 import Memory
@@ -63,8 +63,19 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if OPENAI_API_KEY:
-            # Dùng OpenAI provider - sẽ patch client sau để dùng reverse proxy
+        if USE_CUSTOM_PROVIDER and CUSTOM_LLM_ENDPOINT:
+            # Dùng custom provider với HTTP endpoint
+            config["llm"] = {
+                "provider": "custom",
+                "config": {
+                    "endpoint": CUSTOM_LLM_ENDPOINT.rstrip("/") + "/chat/completions",
+                    "api_key": CUSTOM_LLM_API_KEY,
+                    "model": "gpt-4o-mini",
+                }
+            }
+            logger.info(f"✅ Using custom LLM provider: {CUSTOM_LLM_ENDPOINT}")
+        elif OPENAI_API_KEY:
+            # Fallback: dùng OpenAI provider
             config["llm"] = {
                 "provider": "openai",
                 "config": {
