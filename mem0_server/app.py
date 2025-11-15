@@ -91,54 +91,37 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
-            # Dùng custom provider với requests/httpx trực tiếp
-            custom_provider = CustomOpenAIProvider(
-                api_key=OPENAI_API_KEY,
-                base_url=OPENAI_API_BASE_URL,
-                model="gpt-4o-mini"
-            )
-            # Mem0 có thể nhận custom provider
-            config["llm"] = custom_provider
-        elif OPENAI_API_KEY:
-            # Fallback: dùng OpenAI provider nếu không có reverse proxy
+        if OPENAI_API_KEY:
+            # Dùng OpenAI provider - mem0 sẽ tự tạo client
+            # Không thêm base_url vào config để tránh lỗi
+            llm_config = {
+                "model": "gpt-4o-mini",
+                "api_key": OPENAI_API_KEY,
+            }
+            # Nếu có reverse proxy, sẽ patch client sau
             config["llm"] = {
                 "provider": "openai",
-                "config": {
-                    "model": "gpt-4o-mini",
-                    "api_key": OPENAI_API_KEY,
-                }
+                "config": llm_config
             }
         memory = Memory.from_config(config)
         
-        # Không cần patch vì dùng API chính thức
-        if False:  # Disabled
+        # Patch client sau khi Memory được tạo để dùng reverse proxy
+        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
             try:
-                # Tìm client trong memory object bằng cách inspect
-                import inspect
-                
-                # Tìm tất cả attributes có chứa 'client'
-                for attr_name in dir(memory):
-                    if 'client' in attr_name.lower() and not attr_name.startswith('__'):
-                        try:
-                            attr = getattr(memory, attr_name)
-                            if hasattr(attr, 'base_url'):
-                                attr.base_url = OPENAI_API_BASE_URL
-                                logger.info(f"✅ Patched {attr_name}.base_url for user {user_id}")
-                        except:
-                            pass
-                
-                # Tìm trong llm
+                # Tìm và patch OpenAI client trong memory
                 if hasattr(memory, 'llm') and memory.llm:
-                    for attr_name in dir(memory.llm):
-                        if 'client' in attr_name.lower() and not attr_name.startswith('__'):
-                            try:
-                                attr = getattr(memory.llm, attr_name)
-                                if hasattr(attr, 'base_url'):
-                                    attr.base_url = OPENAI_API_BASE_URL
-                                    logger.info(f"✅ Patched llm.{attr_name}.base_url for user {user_id}")
-                            except:
-                                pass
+                    # Tìm client trong llm object
+                    if hasattr(memory.llm, 'client'):
+                        memory.llm.client.base_url = OPENAI_API_BASE_URL
+                        logger.info(f"✅ Patched llm.client.base_url for user {user_id}")
+                    elif hasattr(memory.llm, '_client'):
+                        memory.llm._client.base_url = OPENAI_API_BASE_URL
+                        logger.info(f"✅ Patched llm._client.base_url for user {user_id}")
+                    # Hoặc tìm trong config
+                    elif hasattr(memory.llm, 'config') and memory.llm.config:
+                        if hasattr(memory.llm.config, 'client'):
+                            memory.llm.config.client.base_url = OPENAI_API_BASE_URL
+                            logger.info(f"✅ Patched llm.config.client.base_url for user {user_id}")
             except Exception as e:
                 logger.debug(f"Could not patch client: {e}")
         
