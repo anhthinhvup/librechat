@@ -47,12 +47,14 @@ OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVE
 
 # Patch OpenAI client để dùng reverse proxy
 if OPENAI_API_BASE_URL:
-    original_init = OpenAI.__init__
+    # Patch OpenAI client trước khi mem0 sử dụng
+    import openai
+    original_init = openai.OpenAI.__init__
     def patched_init(self, *args, **kwargs):
         if 'base_url' not in kwargs and OPENAI_API_BASE_URL:
             kwargs['base_url'] = OPENAI_API_BASE_URL
         return original_init(self, *args, **kwargs)
-    OpenAI.__init__ = patched_init
+    openai.OpenAI.__init__ = patched_init
     logger.info(f"✅ Patched OpenAI client to use: {OPENAI_API_BASE_URL}")
 
 memory_instances: Dict[str, Memory] = {}
@@ -76,8 +78,8 @@ def get_memory(user_id: str) -> Memory:
                     "api_key": OPENAI_API_KEY,
                 }
             }
-            if OPENAI_API_BASE_URL:
-                llm_config["config"]["base_url"] = OPENAI_API_BASE_URL
+            # Không thêm base_url vào config vì mem0 không hỗ trợ
+            # Đã patch OpenAI client ở trên
             config["llm"] = llm_config
         memory_instances[user_id] = Memory.from_config(config)
     return memory_instances[user_id]
