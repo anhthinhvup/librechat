@@ -31,7 +31,7 @@ if OPENAI_API_BASE_URL:
         os.environ["OPENAI_REVERSE_PROXY"] = OPENAI_API_BASE_URL
 
 # Custom LLM Provider dùng requests/httpx trực tiếp với reverse proxy
-class CustomOpenAIProvider:
+class CustomLLMProvider:
     """Custom LLM provider dùng requests/httpx trực tiếp, không dùng thư viện OpenAI"""
     
     def __init__(self, api_key: str, base_url: str, model: str = "gpt-4o-mini"):
@@ -39,9 +39,10 @@ class CustomOpenAIProvider:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.session = requests.Session()
+        logger.info(f"✅ Custom LLM Provider initialized: {self.base_url}")
     
-    def chat_completions(self, messages: List[Dict[str, str]], **kwargs) -> Dict[str, Any]:
-        """Gọi chat/completions API"""
+    def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        """Generate response từ messages - interface cho mem0"""
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Content-Type": "application/json",
@@ -52,39 +53,21 @@ class CustomOpenAIProvider:
             "messages": messages,
             **kwargs
         }
-        response = self.session.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = self.session.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Custom LLM Provider error: {e}")
+            raise
     
     def __call__(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Wrapper để tương thích với mem0"""
-        result = self.chat_completions(messages, **kwargs)
-        return result["choices"][0]["message"]["content"]
+        return self.generate(messages, **kwargs)
 
 try:
     from mem0 import Memory
-    # Patch Memory.from_config để loại bỏ base_url TRƯỚC KHI mem0 xử lý
-    if OPENAI_API_BASE_URL:
-        original_from_config = Memory.from_config
-        @staticmethod
-        def patched_from_config(config, **kwargs):
-            # Loại bỏ base_url từ config dict
-            if isinstance(config, dict):
-                config = dict(config)  # Tạo copy
-                config.pop("base_url", None)
-                config.pop("api_base", None)
-                config.pop("api_base_url", None)
-                # Loại bỏ từ llm config
-                if "llm" in config and isinstance(config["llm"], dict):
-                    config["llm"] = dict(config["llm"])
-                    config["llm"].pop("base_url", None)
-                    if "config" in config["llm"] and isinstance(config["llm"]["config"], dict):
-                        config["llm"]["config"] = dict(config["llm"]["config"])
-                        config["llm"]["config"].pop("base_url", None)
-                        config["llm"]["config"].pop("api_base", None)
-                        config["llm"]["config"].pop("api_base_url", None)
-            return original_from_config(config, **kwargs)
-        Memory.from_config = patched_from_config
 except ImportError:
     raise ImportError("mem0ai package not installed")
 
@@ -124,39 +107,26 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if OPENAI_API_KEY:
-            # Dùng OpenAI provider - mem0 sẽ tự tạo client
-            # Không thêm base_url vào config để tránh lỗi
-            llm_config = {
-                "model": "gpt-4o-mini",
-                "api_key": OPENAI_API_KEY,
-            }
-            # Nếu có reverse proxy, sẽ patch client sau
+        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
+            # Dùng custom provider với requests/httpx trực tiếp
+            custom_provider = CustomLLMProvider(
+                api_key=OPENAI_API_KEY,
+                base_url=OPENAI_API_BASE_URL,
+                model="gpt-4o-mini"
+            )
+            # Mem0 có thể nhận custom provider trực tiếp
+            config["llm"] = custom_provider
+            logger.info(f"✅ Using custom LLM provider for user {user_id}")
+        elif OPENAI_API_KEY:
+            # Fallback: dùng OpenAI provider nếu không có reverse proxy
             config["llm"] = {
                 "provider": "openai",
-                "config": llm_config
+                "config": {
+                    "model": "gpt-4o-mini",
+                    "api_key": OPENAI_API_KEY,
+                }
             }
         memory = Memory.from_config(config)
-        
-        # Patch client sau khi Memory được tạo để dùng reverse proxy
-        if OPENAI_API_KEY and OPENAI_API_BASE_URL:
-            try:
-                # Tìm và patch OpenAI client trong memory
-                if hasattr(memory, 'llm') and memory.llm:
-                    # Tìm client trong llm object
-                    if hasattr(memory.llm, 'client'):
-                        memory.llm.client.base_url = OPENAI_API_BASE_URL
-                        logger.info(f"✅ Patched llm.client.base_url for user {user_id}")
-                    elif hasattr(memory.llm, '_client'):
-                        memory.llm._client.base_url = OPENAI_API_BASE_URL
-                        logger.info(f"✅ Patched llm._client.base_url for user {user_id}")
-                    # Hoặc tìm trong config
-                    elif hasattr(memory.llm, 'config') and memory.llm.config:
-                        if hasattr(memory.llm.config, 'client'):
-                            memory.llm.config.client.base_url = OPENAI_API_BASE_URL
-                            logger.info(f"✅ Patched llm.config.client.base_url for user {user_id}")
-            except Exception as e:
-                logger.debug(f"Could not patch client: {e}")
         
         memory_instances[user_id] = memory
     return memory_instances[user_id]
