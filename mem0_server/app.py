@@ -100,29 +100,40 @@ def get_memory(user_id: str) -> Memory:
             }
         }
         if OPENAI_API_KEY:
+            llm_config_dict = {
+                "model": "gpt-4o-mini",
+                "api_key": OPENAI_API_KEY,
+            }
+            # KHÔNG thêm base_url vào config dict
+            # mem0 sẽ tự tạo client, sau đó chúng ta patch
             config["llm"] = {
                 "provider": "openai",
-                "config": {
-                    "model": "gpt-4o-mini",
-                    "api_key": OPENAI_API_KEY,
-                }
+                "config": llm_config_dict
             }
         memory = Memory.from_config(config)
         
         # Patch client sau khi Memory được tạo
         if OPENAI_API_BASE_URL:
             try:
-                # Tìm client trong memory và set base_url
+                # Tìm client trong memory object
+                # Thử nhiều cách để tìm client
+                client = None
                 if hasattr(memory, 'llm') and memory.llm:
                     if hasattr(memory.llm, 'client'):
-                        memory.llm.client.base_url = OPENAI_API_BASE_URL
+                        client = memory.llm.client
                     elif hasattr(memory.llm, '_client'):
-                        memory.llm._client.base_url = OPENAI_API_BASE_URL
-                # Hoặc tìm trong config
-                if hasattr(memory, 'config') and memory.config:
+                        client = memory.llm._client
+                elif hasattr(memory, 'config') and memory.config:
                     llm_config = memory.config.get('llm')
-                    if llm_config and hasattr(llm_config, 'client'):
-                        llm_config.client.base_url = OPENAI_API_BASE_URL
+                    if llm_config:
+                        if hasattr(llm_config, 'client'):
+                            client = llm_config.client
+                        elif hasattr(llm_config, '_client'):
+                            client = llm_config._client
+                
+                if client:
+                    client.base_url = OPENAI_API_BASE_URL
+                    logger.debug(f"✅ Set base_url for user {user_id}")
             except Exception as e:
                 logger.debug(f"Could not patch client: {e}")
         
