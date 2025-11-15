@@ -41,18 +41,14 @@ if OPENAI_API_BASE_URL:
         return original_openai_init(self, *args, **kwargs)
     openai.OpenAI.__init__ = patched_openai_init
     
-    # Patch mem0's OpenAIConfig nếu có
+    # Patch mem0's OpenAIConfig để loại bỏ base_url
     try:
         from mem0.config import OpenAIConfig
         original_config_init = OpenAIConfig.__init__
         def patched_config_init(self, *args, **kwargs):
-            # Loại bỏ base_url khỏi kwargs nếu có
+            # Loại bỏ base_url khỏi kwargs
             kwargs.pop("base_url", None)
-            result = original_config_init(self, *args, **kwargs)
-            # Set base_url sau khi init
-            if hasattr(self, "client") and self.client:
-                self.client.base_url = OPENAI_API_BASE_URL
-            return result
+            return original_config_init(self, *args, **kwargs)
         OpenAIConfig.__init__ = patched_config_init
     except (ImportError, AttributeError):
         pass
@@ -80,7 +76,19 @@ def get_memory(user_id: str) -> Memory:
                     "api_key": OPENAI_API_KEY,
                 }
             }
-        memory_instances[user_id] = Memory.from_config(config)
+        memory = Memory.from_config(config)
+        
+        # Patch client sau khi Memory được tạo
+        if OPENAI_API_BASE_URL and hasattr(memory, 'config') and memory.config:
+            llm_config = memory.config.get('llm', {})
+            if llm_config and hasattr(llm_config, 'client'):
+                try:
+                    llm_config.client.base_url = OPENAI_API_BASE_URL
+                    logger.debug(f"Set base_url for user {user_id}")
+                except:
+                    pass
+        
+        memory_instances[user_id] = memory
     return memory_instances[user_id]
 
 class Message(BaseModel):
