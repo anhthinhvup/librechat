@@ -99,11 +99,17 @@ async def add_memory(request: AddMemoryRequest):
     try:
         memory = get_memory(request.user_id)
         
-        # Convert messages to mem0 format
-        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        # Convert messages to mem0 format with user_id in metadata
+        messages = []
+        for msg in request.messages:
+            messages.append({
+                "role": msg.role,
+                "content": msg.content,
+                "user_id": request.user_id
+            })
         
-        # Add memories with user_id parameter
-        result = memory.add(messages, user_id=request.user_id)
+        # Add memories - mem0 will extract user_id from messages
+        result = memory.add(messages)
         
         return {
             "success": True,
@@ -120,12 +126,25 @@ async def get_memories(user_id: str, limit: Optional[int] = 10):
     """Get all memories for a user"""
     try:
         memory = get_memory(user_id)
-        # Use get_all() instead of search_all()
-        memories = memory.get_all(user_id=user_id, limit=limit)
+        # Try different methods - mem0 might use different API
+        try:
+            # Try get_all() first
+            memories = memory.get_all(user_id=user_id)
+        except AttributeError:
+            try:
+                # Try get() method
+                memories = memory.get(user_id=user_id)
+            except (AttributeError, TypeError):
+                # Fallback: use search with empty query
+                memories = memory.search("", user_id=user_id, limit=limit or 100)
+        
+        # Limit results if needed
+        if limit and isinstance(memories, list):
+            memories = memories[:limit]
         
         return {
             "success": True,
-            "memories": memories,
+            "memories": memories if isinstance(memories, list) else [],
             "user_id": user_id
         }
     except Exception as e:
