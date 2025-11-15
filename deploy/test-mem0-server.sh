@@ -70,4 +70,3 @@ docker logs mem0-server 2>&1 | grep -i "OpenAIConfig\|base_url\|Error" | tail -2
 
 echo ""
 echo "✅ Test completed!"
-

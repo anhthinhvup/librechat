@@ -8,19 +8,56 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
 import logging
-
-import openai
-import httpx
-import json
-import requests
-from typing import Dict, Any, List
+import sys
+import traceback
 
 # Cấu hình reverse proxy (langhit.com)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_REVERSE_PROXY = os.getenv("OPENAI_REVERSE_PROXY", "") or os.getenv("OPENAI_API_BASE_URL", "")
 REVERSE_PROXY_URL = OPENAI_REVERSE_PROXY.rstrip("/") if OPENAI_REVERSE_PROXY else None
 
-# Patch httpx TRƯỚC KHI import mem0 để redirect tất cả requests
+# Unset các env variables TRƯỚC KHI import bất kỳ thứ gì
+# Mem0 có thể đọc từ các env này và tự động thêm base_url vào OpenAIConfig
+if REVERSE_PROXY_URL:
+    # Unset các env có thể gây conflict - phải làm TRƯỚC KHI import mem0
+    for env_key in ["OPENAI_API_BASE", "OPENAI_BASE_URL", "OPENAI_API_BASE_URL"]:
+        if env_key in os.environ:
+            del os.environ[env_key]
+
+# Patch import hook TRƯỚC KHI import mem0
+# Intercept mọi import và patch OpenAIConfig ngay khi được import
+if REVERSE_PROXY_URL:
+    _original_import = __builtins__.__import__
+    
+    def _patched_import(name, *args, **kwargs):
+        module = _original_import(name, *args, **kwargs)
+        
+        # Patch OpenAIConfig nếu có trong module vừa import
+        if hasattr(module, 'OpenAIConfig'):
+            try:
+                original_init = module.OpenAIConfig.__init__
+                
+                def patched_init(self, *args, **kwargs):
+                    # Loại bỏ base_url và các biến tương tự
+                    kwargs.pop('base_url', None)
+                    kwargs.pop('openai_base_url', None)
+                    kwargs.pop('api_base', None)
+                    return original_init(self, *args, **kwargs)
+                
+                module.OpenAIConfig.__init__ = patched_init
+                sys.stderr.write(f"[PATCH] Patched OpenAIConfig in module: {name}\n")
+                sys.stderr.flush()
+            except Exception as e:
+                sys.stderr.write(f"[PATCH] Failed to patch OpenAIConfig in {name}: {e}\n")
+                sys.stderr.flush()
+        
+        return module
+    
+    __builtins__.__import__ = _patched_import
+    sys.stderr.write("[PATCH] Installed import hook for OpenAIConfig patching\n")
+    sys.stderr.flush()
+
+# Patch httpx transport TRƯỚC KHI import mem0
 if REVERSE_PROXY_URL:
     import httpx
     from httpx import URL
@@ -31,35 +68,20 @@ if REVERSE_PROXY_URL:
         original_prepare_request = BaseClient._prepare_request
         
         def patched_prepare_request(self, request):
+            """Redirect tất cả requests từ api.openai.com sang reverse proxy"""
             if hasattr(request, 'url'):
                 url_str = str(request.url)
                 if "api.openai.com" in url_str:
+                    # Replace https://api.openai.com với reverse proxy URL
                     new_url = url_str.replace("https://api.openai.com", REVERSE_PROXY_URL)
                     request.url = URL(new_url)
             return original_prepare_request(self, request)
         
         BaseClient._prepare_request = patched_prepare_request
-    except:
+    except Exception as e:
         pass
     
-    # Patch httpx.Client và AsyncClient
-    original_client_init = httpx.Client.__init__
-    original_async_client_init = httpx.AsyncClient.__init__
-    
-    def patched_client_init(self, *args, **kwargs):
-        if "base_url" not in kwargs:
-            kwargs["base_url"] = REVERSE_PROXY_URL
-        return original_client_init(self, *args, **kwargs)
-    
-    async def patched_async_client_init(self, *args, **kwargs):
-        if "base_url" not in kwargs:
-            kwargs["base_url"] = REVERSE_PROXY_URL
-        return original_async_client_init(self, *args, **kwargs)
-    
-    httpx.Client.__init__ = patched_client_init
-    httpx.AsyncClient.__init__ = patched_async_client_init
-    
-    # Patch httpx transport
+    # Patch httpx transport handlers
     try:
         from httpx._transports.default import HTTPTransport, AsyncHTTPTransport
         
@@ -67,12 +89,14 @@ if REVERSE_PROXY_URL:
         original_handle_async_request = AsyncHTTPTransport.handle_async_request
         
         def patched_handle_request(self, request):
+            """Redirect requests trong sync transport"""
             if hasattr(request, 'url') and "api.openai.com" in str(request.url):
                 new_url = str(request.url).replace("https://api.openai.com", REVERSE_PROXY_URL)
                 request.url = URL(new_url)
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
+            """Redirect requests trong async transport"""
             if hasattr(request, 'url') and "api.openai.com" in str(request.url):
                 new_url = str(request.url).replace("https://api.openai.com", REVERSE_PROXY_URL)
                 request.url = URL(new_url)
@@ -80,96 +104,89 @@ if REVERSE_PROXY_URL:
         
         HTTPTransport.handle_request = patched_handle_request
         AsyncHTTPTransport.handle_async_request = patched_handle_async_request
-    except:
+    except Exception as e:
         pass
     
-    # Patch OpenAI client
-    import openai
-    original_openai_init = openai.OpenAI.__init__
-    
-    def patched_openai_init(self, *args, **kwargs):
-        if "base_url" not in kwargs:
-            kwargs["base_url"] = REVERSE_PROXY_URL
-        return original_openai_init(self, *args, **kwargs)
-    
-    openai.OpenAI.__init__ = patched_openai_init
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.info(f"✅ Patched httpx transport to redirect api.openai.com → {REVERSE_PROXY_URL}")
 
+# Import mem0 SAU KHI đã patch
 try:
+    sys.stderr.write("[PATCH] About to import mem0...\n")
+    sys.stderr.flush()
     from mem0 import Memory
-    # Patch OpenAIConfig TRƯỚC KHI Memory được tạo để loại bỏ base_url
-    if REVERSE_PROXY_URL:
-        try:
-            from mem0.config import OpenAIConfig
-            original_config_init = OpenAIConfig.__init__
-            
-            def patched_config_init(self, *args, **kwargs):
-                # Loại bỏ base_url từ mọi nơi
-                kwargs.pop("base_url", None)
-                kwargs.pop("api_base", None)
-                kwargs.pop("api_base_url", None)
-                # Loại bỏ từ args
-                new_args = []
-                for arg in args:
-                    if isinstance(arg, dict):
-                        arg = {k: v for k, v in arg.items() if k not in ["base_url", "api_base", "api_base_url"]}
-                        if "config" in arg and isinstance(arg["config"], dict):
-                            arg["config"] = {k: v for k, v in arg["config"].items() if k not in ["base_url", "api_base", "api_base_url"]}
-                    new_args.append(arg)
-                args = tuple(new_args)
-                # Gọi original
-                result = original_config_init(self, *args, **kwargs)
-                # Set base_url cho client SAU KHI init
-                if hasattr(self, "client") and self.client:
-                    self.client.base_url = REVERSE_PROXY_URL
-                elif hasattr(self, "_client") and self._client:
-                    self._client.base_url = REVERSE_PROXY_URL
-                return result
-            
-            OpenAIConfig.__init__ = patched_config_init
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).debug(f"Could not patch OpenAIConfig: {e}")
-except ImportError:
+    sys.stderr.write("[PATCH] Imported mem0 successfully\n")
+    sys.stderr.flush()
+    
+    # Patch OpenAIConfig ở tất cả modules đã import
+    sys.stderr.write(f"[PATCH] Checking {len(sys.modules)} modules for OpenAIConfig...\n")
+    sys.stderr.flush()
+    
+    patched_count = 0
+    for module_name, module in list(sys.modules.items()):
+        if 'OpenAI' in module_name or 'openai' in module_name.lower() or 'mem0' in module_name.lower():
+            if hasattr(module, 'OpenAIConfig'):
+                try:
+                    original_init = module.OpenAIConfig.__init__
+                    
+                    def make_patched_init(orig_init):
+                        def patched_init(self, *args, **kwargs):
+                            sys.stderr.write(f"[PATCH] OpenAIConfig.__init__ called with kwargs: {list(kwargs.keys())}\n")
+                            sys.stderr.flush()
+                            kwargs.pop('base_url', None)
+                            kwargs.pop('openai_base_url', None)
+                            kwargs.pop('api_base', None)
+                            sys.stderr.write(f"[PATCH] After cleanup: {list(kwargs.keys())}\n")
+                            sys.stderr.flush()
+                            return orig_init(self, *args, **kwargs)
+                        return patched_init
+                    
+                    module.OpenAIConfig.__init__ = make_patched_init(original_init)
+                    patched_count += 1
+                    sys.stderr.write(f"[PATCH] ✅ Patched OpenAIConfig in module: {module_name}\n")
+                    sys.stderr.flush()
+                except Exception as e:
+                    sys.stderr.write(f"[PATCH] ❌ Failed to patch in {module_name}: {e}\n")
+                    sys.stderr.flush()
+    
+    sys.stderr.write(f"[PATCH] Total patched modules: {patched_count}\n")
+    sys.stderr.flush()
+    
+except ImportError as e:
+    sys.stderr.write(f"[PATCH] ❌ Failed to import mem0: {e}\n")
+    sys.stderr.flush()
     raise ImportError("mem0ai package not installed")
+
+# Patch Memory.from_config để loại bỏ base_url từ config dict
+original_from_config = Memory.from_config
+
+def patched_from_config(config):
+    """Loại bỏ base_url từ config dict trước khi mem0 xử lý"""
+    import copy
+    cleaned_config = copy.deepcopy(config)
+    
+    # Loại bỏ base_url từ llm config nếu có
+    if "llm" in cleaned_config and "config" in cleaned_config["llm"]:
+        llm_config = cleaned_config["llm"]["config"]
+        llm_config.pop("base_url", None)
+        llm_config.pop("openai_base_url", None)
+        llm_config.pop("api_base", None)
+    
+    # Loại bỏ base_url ở top level nếu có
+    cleaned_config.pop("base_url", None)
+    cleaned_config.pop("openai_base_url", None)
+    cleaned_config.pop("api_base", None)
+    
+    sys.stderr.write(f"[PATCH] Cleaned config (removed base_url)\n")
+    sys.stderr.flush()
+    
+    return original_from_config(cleaned_config)
+
+Memory.from_config = staticmethod(patched_from_config)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Custom LLM Provider dùng requests/httpx trực tiếp với DeepSeek API (miễn phí)
-class CustomOpenAIProvider:
-    """Custom LLM provider dùng HTTP request trực tiếp, hỗ trợ DeepSeek và OpenAI"""
-    
-    def __init__(self, api_key: str, base_url: str, model: str = "deepseek-chat"):
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.session = requests.Session()
-        logger.info(f"✅ Custom LLM Provider initialized: {self.base_url} (model: {self.model})")
-    
-    def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        """Generate response từ messages - interface cho mem0"""
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            **kwargs
-        }
-        try:
-            response = self.session.post(url, headers=headers, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"Custom LLM Provider error: {e}")
-            raise
-    
-    def __call__(self, messages: List[Dict[str, str]], **kwargs) -> str:
-        """Wrapper để tương thích với mem0"""
-        return self.generate(messages, **kwargs)
 
 app = FastAPI(title="Mem0 API Server", version="1.0.0")
 
@@ -194,31 +211,39 @@ def get_memory(user_id: str) -> Memory:
                 }
             },
             # Dùng local embedding model - KHÔNG tốn quota
-            # Mem0 hỗ trợ sentence-transformers
             "embedder": {
                 "provider": "sentence-transformers",
                 "config": {
                     "model": "all-MiniLM-L6-v2",  # Model nhẹ, miễn phí
-                    # Hoặc dùng model khác: "paraphrase-MiniLM-L6-v2", "all-mpnet-base-v2"
                 }
             }
         }
         if OPENAI_API_KEY:
-            # Dùng OpenAI provider - httpx đã được patch để redirect sang reverse proxy
+            # Dùng OpenAI provider
+            # KHÔNG set base_url - httpx transport đã được patch để redirect
             config["llm"] = {
                 "provider": "openai",
                 "config": {
                     "model": "gpt-4o-mini",
                     "api_key": OPENAI_API_KEY,
+                    # KHÔNG set base_url ở đây
                 }
             }
-            if REVERSE_PROXY_URL:
-                logger.info(f"✅ Using OpenAI provider with reverse proxy: {REVERSE_PROXY_URL} for user {user_id}")
-            else:
-                logger.info(f"✅ Using OpenAI provider (direct) for user {user_id}")
-        memory = Memory.from_config(config)
-        
-        memory_instances[user_id] = memory
+        try:
+            sys.stderr.write(f"[DEBUG] Creating Memory with config keys: {list(config.keys())}\n")
+            sys.stderr.flush()
+            memory = Memory.from_config(config)
+            memory_instances[user_id] = memory
+            sys.stderr.write(f"[DEBUG] ✅ Created Memory instance for user: {user_id}\n")
+            sys.stderr.flush()
+        except Exception as e:
+            sys.stderr.write("=" * 80 + "\n")
+            sys.stderr.write("FULL TRACEBACK:\n")
+            sys.stderr.write("=" * 80 + "\n")
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.write("=" * 80 + "\n")
+            sys.stderr.flush()
+            raise
     return memory_instances[user_id]
 
 class Message(BaseModel):
@@ -246,6 +271,12 @@ async def add_memory(request: AddMemoryRequest):
         result = memory.add(messages, user_id=request.user_id)
         return {"success": True, "memories": result, "user_id": request.user_id}
     except Exception as e:
+        sys.stderr.write("=" * 80 + "\n")
+        sys.stderr.write("ERROR IN add_memory:\n")
+        sys.stderr.write("=" * 80 + "\n")
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.write("=" * 80 + "\n")
+        sys.stderr.flush()
         logger.error(f"Error: {e}")
         if "API key" in str(e) or "401" in str(e):
             return {"success": True, "memories": [], "user_id": request.user_id, "warning": "API key issue"}
