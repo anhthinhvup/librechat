@@ -62,6 +62,63 @@ if REVERSE_PROXY_URL:
     import httpx
     from httpx import URL
     
+    # Patch httpx.Client và AsyncClient để thêm default headers
+    try:
+        base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
+        default_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Origin': base_proxy_url,
+            'Referer': base_proxy_url + '/',
+            'Connection': 'keep-alive',
+        }
+        
+        original_client_init = httpx.Client.__init__
+        original_async_client_init = httpx.AsyncClient.__init__
+        
+        def patched_client_init(self, *args, **kwargs):
+            if 'headers' not in kwargs:
+                kwargs['headers'] = {}
+            elif kwargs['headers'] is None:
+                kwargs['headers'] = {}
+            
+            # Merge default headers
+            if isinstance(kwargs['headers'], dict):
+                kwargs['headers'] = {**default_headers, **kwargs['headers']}
+            else:
+                # httpx.Headers object
+                for k, v in default_headers.items():
+                    if k not in kwargs['headers']:
+                        kwargs['headers'][k] = v
+            
+            return original_client_init(self, *args, **kwargs)
+        
+        def patched_async_client_init(self, *args, **kwargs):
+            if 'headers' not in kwargs:
+                kwargs['headers'] = {}
+            elif kwargs['headers'] is None:
+                kwargs['headers'] = {}
+            
+            # Merge default headers
+            if isinstance(kwargs['headers'], dict):
+                kwargs['headers'] = {**default_headers, **kwargs['headers']}
+            else:
+                # httpx.Headers object
+                for k, v in default_headers.items():
+                    if k not in kwargs['headers']:
+                        kwargs['headers'][k] = v
+            
+            return original_async_client_init(self, *args, **kwargs)
+        
+        httpx.Client.__init__ = patched_client_init
+        httpx.AsyncClient.__init__ = patched_async_client_init
+        sys.stderr.write(f"[PATCH] ✅ Patched httpx.Client and AsyncClient to add default headers\n")
+        sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"[PATCH] ❌ Failed to patch httpx Client: {e}\n")
+        sys.stderr.flush()
+    
     # Patch httpx._client.BaseClient._prepare_request - level thấp nhất
     try:
         from httpx._client import BaseClient
