@@ -119,9 +119,82 @@ if REVERSE_PROXY_URL:
         sys.stderr.write(f"[PATCH] ❌ Failed to patch httpx Client: {e}\n")
         sys.stderr.flush()
     
-    # Patch httpx._client.BaseClient._prepare_request - level thấp nhất
+    # Patch httpx._client.BaseClient._send và _request để đảm bảo headers được thêm
     try:
         from httpx._client import BaseClient
+        base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
+        
+        # Patch _send (sync)
+        if hasattr(BaseClient, '_send'):
+            original_send = BaseClient._send
+            def patched_send(self, request, *args, **kwargs):
+                if hasattr(request, 'url') and "langhit.com" in str(request.url):
+                    if hasattr(request, 'headers'):
+                        headers = request.headers
+                        extra_headers = {}
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            extra_headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            extra_headers['Origin'] = base_proxy_url
+                        if 'Referer' not in headers:
+                            extra_headers['Referer'] = base_proxy_url + '/'
+                        if extra_headers:
+                            try:
+                                if hasattr(headers, 'update'):
+                                    headers.update(extra_headers)
+                                elif isinstance(headers, dict):
+                                    headers.update(extra_headers)
+                                else:
+                                    for k, v in extra_headers.items():
+                                        headers[k] = v
+                                sys.stderr.write(f"[PATCH] Added headers in _send: {list(extra_headers.keys())}\n")
+                                sys.stderr.flush()
+                            except Exception as e:
+                                sys.stderr.write(f"[PATCH] Failed to add headers in _send: {e}\n")
+                                sys.stderr.flush()
+                return original_send(self, request, *args, **kwargs)
+            BaseClient._send = patched_send
+        
+        # Patch _request (async)
+        if hasattr(BaseClient, '_request'):
+            original_request = BaseClient._request
+            async def patched_request(self, request, *args, **kwargs):
+                if hasattr(request, 'url') and "langhit.com" in str(request.url):
+                    if hasattr(request, 'headers'):
+                        headers = request.headers
+                        extra_headers = {}
+                        if 'user-agent' not in headers and 'User-Agent' not in headers:
+                            extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        if 'Accept' not in headers:
+                            extra_headers['Accept'] = 'application/json'
+                        if 'Accept-Encoding' not in headers:
+                            extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                        if 'Origin' not in headers:
+                            extra_headers['Origin'] = base_proxy_url
+                        if 'Referer' not in headers:
+                            extra_headers['Referer'] = base_proxy_url + '/'
+                        if extra_headers:
+                            try:
+                                if hasattr(headers, 'update'):
+                                    headers.update(extra_headers)
+                                elif isinstance(headers, dict):
+                                    headers.update(extra_headers)
+                                else:
+                                    for k, v in extra_headers.items():
+                                        headers[k] = v
+                                sys.stderr.write(f"[PATCH] Added headers in _request: {list(extra_headers.keys())}\n")
+                                sys.stderr.flush()
+                            except Exception as e:
+                                sys.stderr.write(f"[PATCH] Failed to add headers in _request: {e}\n")
+                                sys.stderr.flush()
+                return await original_request(self, request, *args, **kwargs)
+            BaseClient._request = patched_request
+        
+        # Patch httpx._client.BaseClient._prepare_request - level thấp nhất
         original_prepare_request = BaseClient._prepare_request
         
         def patched_prepare_request(self, request):
