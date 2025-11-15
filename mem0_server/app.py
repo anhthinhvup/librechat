@@ -62,7 +62,7 @@ if REVERSE_PROXY_URL:
     import httpx
     from httpx import URL
     
-    # Patch httpx.Client và AsyncClient để thêm default headers
+    # Patch httpx.Client và AsyncClient để thêm default headers và force HTTP/2
     try:
         base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
         default_headers = {
@@ -92,6 +92,10 @@ if REVERSE_PROXY_URL:
                     if k not in kwargs['headers']:
                         kwargs['headers'][k] = v
             
+            # Force HTTP/2 if possible
+            if 'http2' not in kwargs:
+                kwargs['http2'] = True
+            
             return original_client_init(self, *args, **kwargs)
         
         def patched_async_client_init(self, *args, **kwargs):
@@ -109,11 +113,15 @@ if REVERSE_PROXY_URL:
                     if k not in kwargs['headers']:
                         kwargs['headers'][k] = v
             
+            # Force HTTP/2 if possible
+            if 'http2' not in kwargs:
+                kwargs['http2'] = True
+            
             return original_async_client_init(self, *args, **kwargs)
         
         httpx.Client.__init__ = patched_client_init
         httpx.AsyncClient.__init__ = patched_async_client_init
-        sys.stderr.write(f"[PATCH] ✅ Patched httpx.Client and AsyncClient to add default headers\n")
+        sys.stderr.write(f"[PATCH] ✅ Patched httpx.Client and AsyncClient to add default headers and force HTTP/2\n")
         sys.stderr.flush()
     except Exception as e:
         sys.stderr.write(f"[PATCH] ❌ Failed to patch httpx Client: {e}\n")
