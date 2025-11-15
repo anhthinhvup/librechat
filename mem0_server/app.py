@@ -13,8 +13,19 @@ import openai
 import httpx
 
 # Patch TRƯỚC KHI import Memory
-# Lưu base_url từ env
+# Lưu base_url từ env nhưng KHÔNG set vào env để mem0 không đọc
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
+# Unset các biến env có thể khiến mem0 đọc base_url
+if OPENAI_API_BASE_URL:
+    # Lưu giá trị
+    _saved_base_url = OPENAI_API_BASE_URL
+    # Unset để mem0 không đọc
+    if "OPENAI_API_BASE_URL" in os.environ:
+        del os.environ["OPENAI_API_BASE_URL"]
+    if "OPENAI_BASE_URL" in os.environ:
+        del os.environ["OPENAI_BASE_URL"]
+    # Giữ lại OPENAI_REVERSE_PROXY để code đọc được
+    OPENAI_API_BASE_URL = _saved_base_url
 
 # Patch httpx client để dùng reverse proxy
 if OPENAI_API_BASE_URL:
