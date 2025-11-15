@@ -96,6 +96,39 @@ if REVERSE_PROXY_URL:
 
 try:
     from mem0 import Memory
+    # Patch OpenAIConfig TRƯỚC KHI Memory được tạo để loại bỏ base_url
+    if REVERSE_PROXY_URL:
+        try:
+            from mem0.config import OpenAIConfig
+            original_config_init = OpenAIConfig.__init__
+            
+            def patched_config_init(self, *args, **kwargs):
+                # Loại bỏ base_url từ mọi nơi
+                kwargs.pop("base_url", None)
+                kwargs.pop("api_base", None)
+                kwargs.pop("api_base_url", None)
+                # Loại bỏ từ args
+                new_args = []
+                for arg in args:
+                    if isinstance(arg, dict):
+                        arg = {k: v for k, v in arg.items() if k not in ["base_url", "api_base", "api_base_url"]}
+                        if "config" in arg and isinstance(arg["config"], dict):
+                            arg["config"] = {k: v for k, v in arg["config"].items() if k not in ["base_url", "api_base", "api_base_url"]}
+                    new_args.append(arg)
+                args = tuple(new_args)
+                # Gọi original
+                result = original_config_init(self, *args, **kwargs)
+                # Set base_url cho client SAU KHI init
+                if hasattr(self, "client") and self.client:
+                    self.client.base_url = REVERSE_PROXY_URL
+                elif hasattr(self, "_client") and self._client:
+                    self._client.base_url = REVERSE_PROXY_URL
+                return result
+            
+            OpenAIConfig.__init__ = patched_config_init
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Could not patch OpenAIConfig: {e}")
 except ImportError:
     raise ImportError("mem0ai package not installed")
 
