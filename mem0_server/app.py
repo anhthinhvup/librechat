@@ -17,22 +17,40 @@ OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVE
 
 # Patch httpx client để dùng reverse proxy
 if OPENAI_API_BASE_URL:
-    # Patch httpx để redirect requests
+    # Patch httpx để redirect requests - patch cả sync và async
     original_httpx_request = httpx.Client.request
     original_httpx_async_request = httpx.AsyncClient.request
+    original_httpx_send = httpx.Client.send
+    original_httpx_async_send = httpx.AsyncClient.send
     
     def patched_httpx_request(self, method, url, **kwargs):
         if isinstance(url, str) and "api.openai.com" in url:
             url = url.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+            logger.debug(f"Redirecting request to: {url}")
         return original_httpx_request(self, method, url, **kwargs)
     
     async def patched_httpx_async_request(self, method, url, **kwargs):
         if isinstance(url, str) and "api.openai.com" in url:
             url = url.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+            logger.debug(f"Redirecting async request to: {url}")
         return await original_httpx_async_request(self, method, url, **kwargs)
+    
+    def patched_httpx_send(self, request, **kwargs):
+        if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+            request.url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+            logger.debug(f"Redirecting send to: {request.url}")
+        return original_httpx_send(self, request, **kwargs)
+    
+    async def patched_httpx_async_send(self, request, **kwargs):
+        if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+            request.url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+            logger.debug(f"Redirecting async send to: {request.url}")
+        return await original_httpx_async_send(self, request, **kwargs)
     
     httpx.Client.request = patched_httpx_request
     httpx.AsyncClient.request = patched_httpx_async_request
+    httpx.Client.send = patched_httpx_send
+    httpx.AsyncClient.send = patched_httpx_async_send
     
     # Patch OpenAI client
     original_openai_init = openai.OpenAI.__init__
