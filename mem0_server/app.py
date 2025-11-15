@@ -157,6 +157,11 @@ if REVERSE_PROXY_URL:
                         # Update headers
                         if extra_headers:
                             try:
+                                # Debug: log headers hiện tại
+                                current_headers = dict(headers) if hasattr(headers, '__iter__') else {}
+                                sys.stderr.write(f"[PATCH] Current headers before: {list(current_headers.keys())}\n")
+                                sys.stderr.flush()
+                                
                                 if hasattr(headers, 'update'):
                                     headers.update(extra_headers)
                                 elif isinstance(headers, dict):
@@ -165,10 +170,16 @@ if REVERSE_PROXY_URL:
                                     # Fallback: set từng item
                                     for k, v in extra_headers.items():
                                         headers[k] = v
+                                
+                                # Debug: log headers sau khi thêm
+                                final_headers = dict(headers) if hasattr(headers, '__iter__') else {}
                                 sys.stderr.write(f"[PATCH] Added headers to request: {list(extra_headers.keys())}\n")
+                                sys.stderr.write(f"[PATCH] Final headers: {list(final_headers.keys())}\n")
                                 sys.stderr.flush()
                             except Exception as e:
                                 sys.stderr.write(f"[PATCH] Failed to add headers: {e}\n")
+                                import traceback
+                                traceback.print_exc(file=sys.stderr)
                                 sys.stderr.flush()
             return original_prepare_request(self, request)
         
