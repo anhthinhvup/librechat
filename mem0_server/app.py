@@ -15,24 +15,6 @@ import json
 
 # Không dùng reverse proxy - dùng API chính thức của OpenAI
 # Bỏ tất cả patch vì dùng API chính thức
-OPENAI_API_BASE_URL = None  # Không dùng reverse proxy
-    # Patch httpx._client để intercept tất cả requests
-    try:
-        # Patch httpx._client.BaseClient để redirect
-        from httpx._client import BaseClient
-        
-        original_prepare_request = BaseClient._prepare_request
-        def patched_prepare_request(self, request):
-            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-                from httpx import URL
-                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
-                request.url = URL(new_url)
-            return original_prepare_request(self, request)
-        BaseClient._prepare_request = patched_prepare_request
-    except:
-        pass
-    
-# Không cần patch vì dùng API chính thức
 
 try:
     from mem0 import Memory
