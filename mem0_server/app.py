@@ -53,11 +53,12 @@ def get_memory(user_id: str) -> Memory:
                     "path": "/app/data/qdrant",
                 }
             },
-            # Dùng local embedding model - KHÔNG tốn quota, KHÔNG cần OpenAI
+            # Dùng local embedding model - KHÔNG tốn quota
+            # Mem0 hỗ trợ sentence-transformers
             "embedder": {
                 "provider": "sentence-transformers",
                 "config": {
-                    "model": "all-MiniLM-L6-v2",  # Model nhẹ, miễn phí
+                    "model_name": "all-MiniLM-L6-v2",  # Thử model_name thay vì model
                     # Hoặc dùng model khác: "paraphrase-MiniLM-L6-v2", "all-mpnet-base-v2"
                 }
             }
