@@ -39,7 +39,9 @@ class CustomLLMProvider:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.session = requests.Session()
-        logger.info(f"✅ Custom LLM Provider initialized: {self.base_url}")
+        # Logger sẽ được khởi tạo sau
+        import logging
+        logging.getLogger(__name__).info(f"✅ Custom LLM Provider initialized: {self.base_url}")
     
     def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Generate response từ messages - interface cho mem0"""
@@ -59,7 +61,8 @@ class CustomLLMProvider:
             result = response.json()
             return result["choices"][0]["message"]["content"]
         except Exception as e:
-            logger.error(f"Custom LLM Provider error: {e}")
+            import logging
+            logging.getLogger(__name__).error(f"Custom LLM Provider error: {e}")
             raise
     
     def __call__(self, messages: List[Dict[str, str]], **kwargs) -> str:
