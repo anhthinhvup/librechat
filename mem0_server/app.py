@@ -41,28 +41,38 @@ if OPENAI_API_BASE_URL:
             kwargs["base_url"] = OPENAI_API_BASE_URL
         return original_openai_init(self, *args, **kwargs)
     openai.OpenAI.__init__ = patched_openai_init
-    
-    logger.info(f"✅ Patched httpx and OpenAI to use: {OPENAI_API_BASE_URL}")
 
 try:
     from mem0 import Memory
-    # Patch OpenAIConfig sau khi import
+    # Patch OpenAIConfig TRƯỚC KHI Memory được tạo
     if OPENAI_API_BASE_URL:
         try:
             from mem0.config import OpenAIConfig
             original_config_init = OpenAIConfig.__init__
             def patched_config_init(self, *args, **kwargs):
-                # Loại bỏ base_url
+                # Loại bỏ base_url và các biến liên quan
                 kwargs.pop("base_url", None)
-                return original_config_init(self, *args, **kwargs)
+                kwargs.pop("api_base", None)
+                kwargs.pop("api_base_url", None)
+                result = original_config_init(self, *args, **kwargs)
+                # Set base_url cho client SAU KHI init
+                if hasattr(self, "client") and self.client:
+                    self.client.base_url = OPENAI_API_BASE_URL
+                elif hasattr(self, "_client") and self._client:
+                    self._client.base_url = OPENAI_API_BASE_URL
+                return result
             OpenAIConfig.__init__ = patched_config_init
-        except:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Could not patch OpenAIConfig: {e}")
 except ImportError:
     raise ImportError("mem0ai package not installed")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+if OPENAI_API_BASE_URL:
+    logger.info(f"✅ Patched httpx and OpenAI to use reverse proxy: {OPENAI_API_BASE_URL}")
 
 app = FastAPI(title="Mem0 API Server", version="1.0.0")
 
