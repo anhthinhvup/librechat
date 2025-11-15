@@ -90,15 +90,26 @@ try:
             from mem0.config import OpenAIConfig
             original_config_init = OpenAIConfig.__init__
             def patched_config_init(self, *args, **kwargs):
-                # Loại bỏ base_url và các biến liên quan TRƯỚC KHI gọi original_init
+                # Loại bỏ base_url từ mọi nơi có thể
                 kwargs.pop("base_url", None)
                 kwargs.pop("api_base", None)
                 kwargs.pop("api_base_url", None)
-                # Loại bỏ từ config dict nếu có
-                if args and isinstance(args[0], dict):
-                    args[0].pop("base_url", None)
-                    args[0].pop("api_base", None)
-                    args[0].pop("api_base_url", None)
+                # Loại bỏ từ args (có thể là dict hoặc tuple)
+                new_args = []
+                for arg in args:
+                    if isinstance(arg, dict):
+                        arg = arg.copy()  # Tạo copy để không modify original
+                        arg.pop("base_url", None)
+                        arg.pop("api_base", None)
+                        arg.pop("api_base_url", None)
+                        # Loại bỏ từ nested config nếu có
+                        if "config" in arg and isinstance(arg["config"], dict):
+                            arg["config"].pop("base_url", None)
+                            arg["config"].pop("api_base", None)
+                            arg["config"].pop("api_base_url", None)
+                    new_args.append(arg)
+                args = tuple(new_args)
+                # Gọi original với args đã clean
                 result = original_config_init(self, *args, **kwargs)
                 # Set base_url cho client SAU KHI init
                 if hasattr(self, "client") and self.client:
