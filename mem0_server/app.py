@@ -31,15 +31,33 @@ app.add_middleware(
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
 
-# Patch OpenAI client để dùng reverse proxy
+# Patch để dùng reverse proxy
 if OPENAI_API_BASE_URL:
-    original_init = openai.OpenAI.__init__
-    def patched_init(self, *args, **kwargs):
+    # Patch OpenAI client
+    original_openai_init = openai.OpenAI.__init__
+    def patched_openai_init(self, *args, **kwargs):
         if "base_url" not in kwargs and OPENAI_API_BASE_URL:
             kwargs["base_url"] = OPENAI_API_BASE_URL
-        return original_init(self, *args, **kwargs)
-    openai.OpenAI.__init__ = patched_init
-    logger.info(f"✅ Patched OpenAI to use: {OPENAI_API_BASE_URL}")
+        return original_openai_init(self, *args, **kwargs)
+    openai.OpenAI.__init__ = patched_openai_init
+    
+    # Patch mem0's OpenAIConfig nếu có
+    try:
+        from mem0.config import OpenAIConfig
+        original_config_init = OpenAIConfig.__init__
+        def patched_config_init(self, *args, **kwargs):
+            # Loại bỏ base_url khỏi kwargs nếu có
+            kwargs.pop("base_url", None)
+            result = original_config_init(self, *args, **kwargs)
+            # Set base_url sau khi init
+            if hasattr(self, "client") and self.client:
+                self.client.base_url = OPENAI_API_BASE_URL
+            return result
+        OpenAIConfig.__init__ = patched_config_init
+    except (ImportError, AttributeError):
+        pass
+    
+    logger.info(f"✅ Patched to use reverse proxy: {OPENAI_API_BASE_URL}")
 
 memory_instances: Dict[str, Memory] = {}
 
