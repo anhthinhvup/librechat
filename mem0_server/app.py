@@ -24,44 +24,50 @@ if OPENAI_API_BASE_URL:
 
 # Patch httpx client để dùng reverse proxy
 if OPENAI_API_BASE_URL:
-    # Patch httpx để redirect requests - patch cả sync và async
-    original_httpx_request = httpx.Client.request
-    original_httpx_async_request = httpx.AsyncClient.request
-    original_httpx_send = httpx.Client.send
-    original_httpx_async_send = httpx.AsyncClient.send
-    
-    def patched_httpx_request(self, method, url, **kwargs):
-        if isinstance(url, str) and "api.openai.com" in url:
-            url = url.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
-        return original_httpx_request(self, method, url, **kwargs)
-    
-    async def patched_httpx_async_request(self, method, url, **kwargs):
-        if isinstance(url, str) and "api.openai.com" in url:
-            url = url.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
-        return await original_httpx_async_request(self, method, url, **kwargs)
-    
-    def patched_httpx_send(self, request, **kwargs):
-        if hasattr(request, 'url'):
-            url_str = str(request.url)
-            if "api.openai.com" in url_str:
-                new_url = url_str.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+    # Patch httpx transport để intercept tất cả requests
+    try:
+        from httpx._transports.default import HTTPTransport, AsyncHTTPTransport
+        
+        original_handle_request = HTTPTransport.handle_request
+        original_handle_async_request = AsyncHTTPTransport.handle_async_request
+        
+        def patched_handle_request(self, request):
+            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
                 from httpx import URL
+                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
                 request.url = URL(new_url)
-        return original_httpx_send(self, request, **kwargs)
-    
-    async def patched_httpx_async_send(self, request, **kwargs):
-        if hasattr(request, 'url'):
-            url_str = str(request.url)
-            if "api.openai.com" in url_str:
-                new_url = url_str.replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+            return original_handle_request(self, request)
+        
+        async def patched_handle_async_request(self, request):
+            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
                 from httpx import URL
+                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
                 request.url = URL(new_url)
-        return await original_httpx_async_send(self, request, **kwargs)
-    
-    httpx.Client.request = patched_httpx_request
-    httpx.AsyncClient.request = patched_httpx_async_request
-    httpx.Client.send = patched_httpx_send
-    httpx.AsyncClient.send = patched_httpx_async_send
+            return await original_handle_async_request(self, request)
+        
+        HTTPTransport.handle_request = patched_handle_request
+        AsyncHTTPTransport.handle_async_request = patched_handle_async_request
+    except:
+        # Fallback: patch send method
+        original_httpx_send = httpx.Client.send
+        original_httpx_async_send = httpx.AsyncClient.send
+        
+        def patched_httpx_send(self, request, **kwargs):
+            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+                from httpx import URL
+                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+                request.url = URL(new_url)
+            return original_httpx_send(self, request, **kwargs)
+        
+        async def patched_httpx_async_send(self, request, **kwargs):
+            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+                from httpx import URL
+                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
+                request.url = URL(new_url)
+            return await original_httpx_async_send(self, request, **kwargs)
+        
+        httpx.Client.send = patched_httpx_send
+        httpx.AsyncClient.send = patched_httpx_async_send
     
     # Patch OpenAI client
     original_openai_init = openai.OpenAI.__init__
