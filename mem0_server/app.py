@@ -58,7 +58,7 @@ def get_memory(user_id: str) -> Memory:
             "embedder": {
                 "provider": "sentence-transformers",
                 "config": {
-                    "model_name": "all-MiniLM-L6-v2",  # Thử model_name thay vì model
+                    "model": "all-MiniLM-L6-v2",  # Model nhẹ, miễn phí
                     # Hoặc dùng model khác: "paraphrase-MiniLM-L6-v2", "all-mpnet-base-v2"
                 }
             }
