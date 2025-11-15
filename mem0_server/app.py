@@ -11,151 +11,38 @@ import logging
 
 import openai
 import httpx
+import json
 
-# Patch TRƯỚC KHI import Memory
-# Lưu base_url từ env nhưng KHÔNG set vào env để mem0 không đọc
-OPENAI_API_BASE_URL = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_REVERSE_PROXY", "")
-# Unset các biến env có thể khiến mem0 đọc base_url
-if OPENAI_API_BASE_URL:
-    # Lưu giá trị
-    _saved_base_url = OPENAI_API_BASE_URL
-    # Unset để mem0 không đọc
-    if "OPENAI_API_BASE_URL" in os.environ:
-        del os.environ["OPENAI_API_BASE_URL"]
-    if "OPENAI_BASE_URL" in os.environ:
-        del os.environ["OPENAI_BASE_URL"]
-    # Giữ lại OPENAI_REVERSE_PROXY để code đọc được
-    OPENAI_API_BASE_URL = _saved_base_url
-
-# Patch httpx client để dùng reverse proxy
-if OPENAI_API_BASE_URL:
-    # Patch httpx transport để intercept tất cả requests
+# Không dùng reverse proxy - dùng API chính thức của OpenAI
+# Bỏ tất cả patch vì dùng API chính thức
+OPENAI_API_BASE_URL = None  # Không dùng reverse proxy
+    # Patch httpx._client để intercept tất cả requests
     try:
-        from httpx._transports.default import HTTPTransport, AsyncHTTPTransport
+        # Patch httpx._client.BaseClient để redirect
+        from httpx._client import BaseClient
         
-        original_handle_request = HTTPTransport.handle_request
-        original_handle_async_request = AsyncHTTPTransport.handle_async_request
-        
-        def patched_handle_request(self, request):
+        original_prepare_request = BaseClient._prepare_request
+        def patched_prepare_request(self, request):
             if hasattr(request, 'url') and "api.openai.com" in str(request.url):
                 from httpx import URL
                 new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
                 request.url = URL(new_url)
-            return original_handle_request(self, request)
-        
-        async def patched_handle_async_request(self, request):
-            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-                from httpx import URL
-                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
-                request.url = URL(new_url)
-            return await original_handle_async_request(self, request)
-        
-        HTTPTransport.handle_request = patched_handle_request
-        AsyncHTTPTransport.handle_async_request = patched_handle_async_request
+            return original_prepare_request(self, request)
+        BaseClient._prepare_request = patched_prepare_request
     except:
-        # Fallback: patch send method
-        original_httpx_send = httpx.Client.send
-        original_httpx_async_send = httpx.AsyncClient.send
-        
-        def patched_httpx_send(self, request, **kwargs):
-            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-                from httpx import URL
-                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
-                request.url = URL(new_url)
-            return original_httpx_send(self, request, **kwargs)
-        
-        async def patched_httpx_async_send(self, request, **kwargs):
-            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-                from httpx import URL
-                new_url = str(request.url).replace("https://api.openai.com", OPENAI_API_BASE_URL.rstrip("/"))
-                request.url = URL(new_url)
-            return await original_httpx_async_send(self, request, **kwargs)
-        
-        httpx.Client.send = patched_httpx_send
-        httpx.AsyncClient.send = patched_httpx_async_send
+        pass
     
-    # Patch OpenAI client
-    original_openai_init = openai.OpenAI.__init__
-    def patched_openai_init(self, *args, **kwargs):
-        if "base_url" not in kwargs and OPENAI_API_BASE_URL:
-            kwargs["base_url"] = OPENAI_API_BASE_URL
-        return original_openai_init(self, *args, **kwargs)
-    openai.OpenAI.__init__ = patched_openai_init
+# Không cần patch vì dùng API chính thức
 
 try:
     from mem0 import Memory
-    # Patch OpenAIConfig TRƯỚC KHI Memory được tạo
-    if OPENAI_API_BASE_URL:
-        try:
-            from mem0.config import OpenAIConfig
-            import inspect
-            original_config_init = OpenAIConfig.__init__
-            sig = inspect.signature(original_config_init)
-            
-            def patched_config_init(self, *args, **kwargs):
-                # Kiểm tra signature để xem có nhận base_url không
-                if 'base_url' in sig.parameters:
-                    # Nếu có, loại bỏ
-                    kwargs.pop("base_url", None)
-                else:
-                    # Nếu không có trong signature, mem0 không hỗ trợ
-                    # Loại bỏ từ mọi nơi
-                    kwargs.pop("base_url", None)
-                    kwargs.pop("api_base", None)
-                    kwargs.pop("api_base_url", None)
-                    # Loại bỏ từ args
-                    new_args = []
-                    for arg in args:
-                        if isinstance(arg, dict):
-                            arg = dict(arg)  # Tạo copy
-                            arg.pop("base_url", None)
-                            arg.pop("api_base", None)
-                            arg.pop("api_base_url", None)
-                            if "config" in arg and isinstance(arg["config"], dict):
-                                arg["config"] = dict(arg["config"])
-                                arg["config"].pop("base_url", None)
-                                arg["config"].pop("api_base", None)
-                                arg["config"].pop("api_base_url", None)
-                        new_args.append(arg)
-                    args = tuple(new_args)
-                
-                # Gọi original
-                try:
-                    result = original_config_init(self, *args, **kwargs)
-                except TypeError as e:
-                    if "base_url" in str(e):
-                        # Nếu vẫn lỗi, thử lại không có base_url
-                        kwargs.pop("base_url", None)
-                        new_args = []
-                        for arg in args:
-                            if isinstance(arg, dict):
-                                arg = {k: v for k, v in arg.items() if k not in ["base_url", "api_base", "api_base_url"]}
-                                if "config" in arg and isinstance(arg["config"], dict):
-                                    arg["config"] = {k: v for k, v in arg["config"].items() if k not in ["base_url", "api_base", "api_base_url"]}
-                            new_args.append(arg)
-                        args = tuple(new_args)
-                        result = original_config_init(self, *args, **kwargs)
-                    else:
-                        raise
-                
-                # Set base_url cho client SAU KHI init
-                if hasattr(self, "client") and self.client:
-                    self.client.base_url = OPENAI_API_BASE_URL
-                elif hasattr(self, "_client") and self._client:
-                    self._client.base_url = OPENAI_API_BASE_URL
-                return result
-            OpenAIConfig.__init__ = patched_config_init
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).debug(f"Could not patch OpenAIConfig: {e}")
 except ImportError:
     raise ImportError("mem0ai package not installed")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-if OPENAI_API_BASE_URL:
-    logger.info(f"✅ Patched httpx and OpenAI to use reverse proxy: {OPENAI_API_BASE_URL}")
+# Dùng API chính thức của OpenAI - không cần patch
 
 app = FastAPI(title="Mem0 API Server", version="1.0.0")
 
@@ -203,8 +90,8 @@ def get_memory(user_id: str) -> Memory:
             }
         memory = Memory.from_config(config)
         
-        # Patch client sau khi Memory được tạo
-        if OPENAI_API_BASE_URL:
+        # Không cần patch vì dùng API chính thức
+        if False:  # Disabled
             try:
                 # Tìm client trong memory object bằng cách inspect
                 import inspect
