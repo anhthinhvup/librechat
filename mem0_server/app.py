@@ -15,10 +15,84 @@ import json
 import requests
 from typing import Dict, Any, List
 
-# Dùng DeepSeek API (miễn phí, OpenAI-compatible) với HTTP request trực tiếp
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-DEEPSEEK_API_BASE_URL = os.getenv("DEEPSEEK_API_BASE_URL", "https://api.deepseek.com")
-USE_DEEPSEEK = os.getenv("USE_DEEPSEEK", "true").lower() == "true"
+# Cấu hình reverse proxy (langhit.com)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_REVERSE_PROXY = os.getenv("OPENAI_REVERSE_PROXY", "") or os.getenv("OPENAI_API_BASE_URL", "")
+REVERSE_PROXY_URL = OPENAI_REVERSE_PROXY.rstrip("/") if OPENAI_REVERSE_PROXY else None
+
+# Patch httpx TRƯỚC KHI import mem0 để redirect tất cả requests
+if REVERSE_PROXY_URL:
+    import httpx
+    from httpx import URL
+    
+    # Patch httpx._client.BaseClient._prepare_request - level thấp nhất
+    try:
+        from httpx._client import BaseClient
+        original_prepare_request = BaseClient._prepare_request
+        
+        def patched_prepare_request(self, request):
+            if hasattr(request, 'url'):
+                url_str = str(request.url)
+                if "api.openai.com" in url_str:
+                    new_url = url_str.replace("https://api.openai.com", REVERSE_PROXY_URL)
+                    request.url = URL(new_url)
+            return original_prepare_request(self, request)
+        
+        BaseClient._prepare_request = patched_prepare_request
+    except:
+        pass
+    
+    # Patch httpx.Client và AsyncClient
+    original_client_init = httpx.Client.__init__
+    original_async_client_init = httpx.AsyncClient.__init__
+    
+    def patched_client_init(self, *args, **kwargs):
+        if "base_url" not in kwargs:
+            kwargs["base_url"] = REVERSE_PROXY_URL
+        return original_client_init(self, *args, **kwargs)
+    
+    async def patched_async_client_init(self, *args, **kwargs):
+        if "base_url" not in kwargs:
+            kwargs["base_url"] = REVERSE_PROXY_URL
+        return original_async_client_init(self, *args, **kwargs)
+    
+    httpx.Client.__init__ = patched_client_init
+    httpx.AsyncClient.__init__ = patched_async_client_init
+    
+    # Patch httpx transport
+    try:
+        from httpx._transports.default import HTTPTransport, AsyncHTTPTransport
+        
+        original_handle_request = HTTPTransport.handle_request
+        original_handle_async_request = AsyncHTTPTransport.handle_async_request
+        
+        def patched_handle_request(self, request):
+            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+                new_url = str(request.url).replace("https://api.openai.com", REVERSE_PROXY_URL)
+                request.url = URL(new_url)
+            return original_handle_request(self, request)
+        
+        async def patched_handle_async_request(self, request):
+            if hasattr(request, 'url') and "api.openai.com" in str(request.url):
+                new_url = str(request.url).replace("https://api.openai.com", REVERSE_PROXY_URL)
+                request.url = URL(new_url)
+            return await original_handle_async_request(self, request)
+        
+        HTTPTransport.handle_request = patched_handle_request
+        AsyncHTTPTransport.handle_async_request = patched_handle_async_request
+    except:
+        pass
+    
+    # Patch OpenAI client
+    import openai
+    original_openai_init = openai.OpenAI.__init__
+    
+    def patched_openai_init(self, *args, **kwargs):
+        if "base_url" not in kwargs:
+            kwargs["base_url"] = REVERSE_PROXY_URL
+        return original_openai_init(self, *args, **kwargs)
+    
+    openai.OpenAI.__init__ = patched_openai_init
 
 try:
     from mem0 import Memory
@@ -96,25 +170,19 @@ def get_memory(user_id: str) -> Memory:
                 }
             }
         }
-        if USE_DEEPSEEK and DEEPSEEK_API_KEY:
-            # Dùng DeepSeek API (miễn phí, OpenAI-compatible)
-            custom_provider = CustomOpenAIProvider(
-                api_key=DEEPSEEK_API_KEY,
-                base_url=DEEPSEEK_API_BASE_URL,
-                model="deepseek-chat"  # DeepSeek model
-            )
-            config["llm"] = custom_provider
-            logger.info(f"✅ Using DeepSeek API (free) for user {user_id}")
-        elif os.getenv("OPENAI_API_KEY", ""):
-            # Fallback: dùng OpenAI API
-            OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-            custom_provider = CustomOpenAIProvider(
-                api_key=OPENAI_API_KEY,
-                base_url="https://api.openai.com/v1",
-                model="gpt-4o-mini"
-            )
-            config["llm"] = custom_provider
-            logger.info(f"✅ Using OpenAI API for user {user_id}")
+        if OPENAI_API_KEY:
+            # Dùng OpenAI provider - httpx đã được patch để redirect sang reverse proxy
+            config["llm"] = {
+                "provider": "openai",
+                "config": {
+                    "model": "gpt-4o-mini",
+                    "api_key": OPENAI_API_KEY,
+                }
+            }
+            if REVERSE_PROXY_URL:
+                logger.info(f"✅ Using OpenAI provider with reverse proxy: {REVERSE_PROXY_URL} for user {user_id}")
+            else:
+                logger.info(f"✅ Using OpenAI provider (direct) for user {user_id}")
         memory = Memory.from_config(config)
         
         memory_instances[user_id] = memory
