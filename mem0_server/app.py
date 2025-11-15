@@ -132,13 +132,17 @@ if REVERSE_PROXY_URL:
         from httpx._client import BaseClient
         base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
         
-        # Patch _send (sync)
+        # Patch _send (sync) - log để debug
         if hasattr(BaseClient, '_send'):
             original_send = BaseClient._send
             def patched_send(self, request, *args, **kwargs):
+                sys.stderr.write(f"[PATCH] _send called with URL: {request.url if hasattr(request, 'url') else 'N/A'}\n")
+                sys.stderr.flush()
                 if hasattr(request, 'url') and "langhit.com" in str(request.url):
                     if hasattr(request, 'headers'):
                         headers = request.headers
+                        sys.stderr.write(f"[PATCH] Current headers in _send: {list(headers.keys()) if hasattr(headers, 'keys') else 'N/A'}\n")
+                        sys.stderr.flush()
                         extra_headers = {}
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -159,21 +163,32 @@ if REVERSE_PROXY_URL:
                                 else:
                                     for k, v in extra_headers.items():
                                         headers[k] = v
-                                sys.stderr.write(f"[PATCH] Added headers in _send: {list(extra_headers.keys())}\n")
+                                sys.stderr.write(f"[PATCH] ✅ Added headers in _send: {list(extra_headers.keys())}\n")
                                 sys.stderr.flush()
                             except Exception as e:
-                                sys.stderr.write(f"[PATCH] Failed to add headers in _send: {e}\n")
+                                sys.stderr.write(f"[PATCH] ❌ Failed to add headers in _send: {e}\n")
+                                import traceback
+                                traceback.print_exc(file=sys.stderr)
                                 sys.stderr.flush()
                 return original_send(self, request, *args, **kwargs)
             BaseClient._send = patched_send
+            sys.stderr.write("[PATCH] ✅ Patched BaseClient._send\n")
+            sys.stderr.flush()
+        else:
+            sys.stderr.write("[PATCH] ⚠️ BaseClient._send not found\n")
+            sys.stderr.flush()
         
-        # Patch _request (async)
+        # Patch _request (async) - log để debug
         if hasattr(BaseClient, '_request'):
             original_request = BaseClient._request
             async def patched_request(self, request, *args, **kwargs):
+                sys.stderr.write(f"[PATCH] _request called with URL: {request.url if hasattr(request, 'url') else 'N/A'}\n")
+                sys.stderr.flush()
                 if hasattr(request, 'url') and "langhit.com" in str(request.url):
                     if hasattr(request, 'headers'):
                         headers = request.headers
+                        sys.stderr.write(f"[PATCH] Current headers in _request: {list(headers.keys()) if hasattr(headers, 'keys') else 'N/A'}\n")
+                        sys.stderr.flush()
                         extra_headers = {}
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -194,13 +209,20 @@ if REVERSE_PROXY_URL:
                                 else:
                                     for k, v in extra_headers.items():
                                         headers[k] = v
-                                sys.stderr.write(f"[PATCH] Added headers in _request: {list(extra_headers.keys())}\n")
+                                sys.stderr.write(f"[PATCH] ✅ Added headers in _request: {list(extra_headers.keys())}\n")
                                 sys.stderr.flush()
                             except Exception as e:
-                                sys.stderr.write(f"[PATCH] Failed to add headers in _request: {e}\n")
+                                sys.stderr.write(f"[PATCH] ❌ Failed to add headers in _request: {e}\n")
+                                import traceback
+                                traceback.print_exc(file=sys.stderr)
                                 sys.stderr.flush()
                 return await original_request(self, request, *args, **kwargs)
             BaseClient._request = patched_request
+            sys.stderr.write("[PATCH] ✅ Patched BaseClient._request\n")
+            sys.stderr.flush()
+        else:
+            sys.stderr.write("[PATCH] ⚠️ BaseClient._request not found\n")
+            sys.stderr.flush()
         
         # Patch httpx._client.BaseClient._prepare_request - level thấp nhất
         original_prepare_request = BaseClient._prepare_request
