@@ -63,6 +63,28 @@ class CustomOpenAIProvider:
 
 try:
     from mem0 import Memory
+    # Patch Memory.from_config để loại bỏ base_url TRƯỚC KHI mem0 xử lý
+    if OPENAI_API_BASE_URL:
+        original_from_config = Memory.from_config
+        @staticmethod
+        def patched_from_config(config, **kwargs):
+            # Loại bỏ base_url từ config dict
+            if isinstance(config, dict):
+                config = dict(config)  # Tạo copy
+                config.pop("base_url", None)
+                config.pop("api_base", None)
+                config.pop("api_base_url", None)
+                # Loại bỏ từ llm config
+                if "llm" in config and isinstance(config["llm"], dict):
+                    config["llm"] = dict(config["llm"])
+                    config["llm"].pop("base_url", None)
+                    if "config" in config["llm"] and isinstance(config["llm"]["config"], dict):
+                        config["llm"]["config"] = dict(config["llm"]["config"])
+                        config["llm"]["config"].pop("base_url", None)
+                        config["llm"]["config"].pop("api_base", None)
+                        config["llm"]["config"].pop("api_base_url", None)
+            return original_from_config(config, **kwargs)
+        Memory.from_config = patched_from_config
 except ImportError:
     raise ImportError("mem0ai package not installed")
 
