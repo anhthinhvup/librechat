@@ -72,8 +72,13 @@ if REVERSE_PROXY_URL:
             if hasattr(request, 'url'):
                 url_str = str(request.url)
                 if "api.openai.com" in url_str:
-                    # Replace https://api.openai.com với reverse proxy URL
-                    new_url = url_str.replace("https://api.openai.com", REVERSE_PROXY_URL)
+                    # Replace https://api.openai.com/v1 với reverse proxy URL (loại bỏ /v1 để tránh duplicate)
+                    # Hoặc replace https://api.openai.com với reverse proxy URL (không có /v1)
+                    base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
+                    if "/v1" in url_str:
+                        new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
+                    else:
+                        new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
             return original_prepare_request(self, request)
         
@@ -91,14 +96,24 @@ if REVERSE_PROXY_URL:
         def patched_handle_request(self, request):
             """Redirect requests trong sync transport"""
             if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-                new_url = str(request.url).replace("https://api.openai.com", REVERSE_PROXY_URL)
+                url_str = str(request.url)
+                base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
+                if "/v1" in url_str:
+                    new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
+                else:
+                    new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                 request.url = URL(new_url)
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
             """Redirect requests trong async transport"""
             if hasattr(request, 'url') and "api.openai.com" in str(request.url):
-                new_url = str(request.url).replace("https://api.openai.com", REVERSE_PROXY_URL)
+                url_str = str(request.url)
+                base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
+                if "/v1" in url_str:
+                    new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
+                else:
+                    new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                 request.url = URL(new_url)
             return await original_handle_async_request(self, request)
         
