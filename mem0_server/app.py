@@ -144,25 +144,31 @@ def get_memory(user_id: str) -> Memory:
         # Patch client sau khi Memory được tạo
         if OPENAI_API_BASE_URL:
             try:
-                # Tìm client trong memory object
-                # Thử nhiều cách để tìm client
-                client = None
-                if hasattr(memory, 'llm') and memory.llm:
-                    if hasattr(memory.llm, 'client'):
-                        client = memory.llm.client
-                    elif hasattr(memory.llm, '_client'):
-                        client = memory.llm._client
-                elif hasattr(memory, 'config') and memory.config:
-                    llm_config = memory.config.get('llm')
-                    if llm_config:
-                        if hasattr(llm_config, 'client'):
-                            client = llm_config.client
-                        elif hasattr(llm_config, '_client'):
-                            client = llm_config._client
+                # Tìm client trong memory object bằng cách inspect
+                import inspect
                 
-                if client:
-                    client.base_url = OPENAI_API_BASE_URL
-                    logger.debug(f"✅ Set base_url for user {user_id}")
+                # Tìm tất cả attributes có chứa 'client'
+                for attr_name in dir(memory):
+                    if 'client' in attr_name.lower() and not attr_name.startswith('__'):
+                        try:
+                            attr = getattr(memory, attr_name)
+                            if hasattr(attr, 'base_url'):
+                                attr.base_url = OPENAI_API_BASE_URL
+                                logger.info(f"✅ Patched {attr_name}.base_url for user {user_id}")
+                        except:
+                            pass
+                
+                # Tìm trong llm
+                if hasattr(memory, 'llm') and memory.llm:
+                    for attr_name in dir(memory.llm):
+                        if 'client' in attr_name.lower() and not attr_name.startswith('__'):
+                            try:
+                                attr = getattr(memory.llm, attr_name)
+                                if hasattr(attr, 'base_url'):
+                                    attr.base_url = OPENAI_API_BASE_URL
+                                    logger.info(f"✅ Patched llm.{attr_name}.base_url for user {user_id}")
+                            except:
+                                pass
             except Exception as e:
                 logger.debug(f"Could not patch client: {e}")
         
