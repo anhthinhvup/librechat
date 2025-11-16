@@ -642,6 +642,9 @@ def get_memory(user_id: str) -> Memory:
             }
         try:
             sys.stderr.write(f"[DEBUG] Creating Memory with config keys: {list(config.keys())}\n")
+            if "embedder" in config and "config" in config["embedder"]:
+                embedder_model = config["embedder"]["config"].get("model", "N/A")
+                sys.stderr.write(f"[DEBUG] Embedder model: {embedder_model}\n")
             sys.stderr.flush()
             memory = Memory.from_config(config)
             memory_instances[user_id] = memory
