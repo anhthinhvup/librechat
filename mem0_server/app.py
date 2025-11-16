@@ -437,6 +437,62 @@ try:
     sys.stderr.write("[PATCH] Imported mem0 successfully\n")
     sys.stderr.flush()
     
+    # ============================================================================
+    # PATCH: Tắt hoàn toàn embeddings để tránh gọi /v1/embeddings API
+    # ============================================================================
+    try:
+        # Patch mem0.embeddings.openai.OpenAIEmbeddingModel.embed()
+        # để return fake vector thay vì gọi API
+        from mem0.embeddings.openai import OpenAIEmbeddingModel
+        original_openai_embed = OpenAIEmbeddingModel.embed
+        
+        def patched_openai_embed(self, text, operation="add"):
+            """Return fake embedding vector để tránh gọi embeddings.create API"""
+            sys.stderr.write(f"[PATCH] OpenAIEmbeddingModel.embed() called - returning fake vector instead of calling API\n")
+            sys.stderr.flush()
+            # Return fake embedding vector với dimension 1024 (thường dùng cho text-embedding-ada-002)
+            # Format: list of floats
+            fake_embedding = [0.0] * 1024
+            return fake_embedding
+        
+        OpenAIEmbeddingModel.embed = patched_openai_embed
+        sys.stderr.write("[PATCH] ✅ Patched OpenAIEmbeddingModel.embed() to return fake vector\n")
+        sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"[PATCH] ⚠️ Failed to patch OpenAIEmbeddingModel: {e}\n")
+        sys.stderr.flush()
+    
+    try:
+        # Patch mem0.memory.main.Memory._add_to_vector_store()
+        # để skip embeddings khi vector_store=None hoặc embedder=None
+        from mem0.memory.main import Memory as MemoryClass
+        original_add_to_vector_store = MemoryClass._add_to_vector_store
+        
+        def patched_add_to_vector_store(self, new_mem, user_id):
+            """Skip embeddings và vector_store nếu chúng là None"""
+            # Nếu vector_store hoặc embedding_model là None, skip hoàn toàn
+            if (hasattr(self, 'vector_store') and self.vector_store is None) or \
+               (hasattr(self, 'embedding_model') and self.embedding_model is None):
+                sys.stderr.write(f"[PATCH] Skipping _add_to_vector_store (vector_store=None or embedding_model=None)\n")
+                sys.stderr.flush()
+                # Return None hoặc empty dict để mem0 biết không có vector store
+                return None
+            
+            # Nếu có vector_store và embedding_model, gọi original nhưng patch embed()
+            # (đã patch ở trên rồi)
+            return original_add_to_vector_store(self, new_mem, user_id)
+        
+        MemoryClass._add_to_vector_store = patched_add_to_vector_store
+        sys.stderr.write("[PATCH] ✅ Patched Memory._add_to_vector_store() to skip when vector_store=None\n")
+        sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"[PATCH] ⚠️ Failed to patch Memory._add_to_vector_store: {e}\n")
+        sys.stderr.flush()
+    
+    # ============================================================================
+    # END PATCH: Embeddings
+    # ============================================================================
+    
     # Patch OpenAIConfig ở tất cả modules đã import
     sys.stderr.write(f"[PATCH] Checking {len(sys.modules)} modules for OpenAIConfig...\n")
     sys.stderr.flush()
