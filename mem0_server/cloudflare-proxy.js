@@ -146,6 +146,8 @@ async function getCookies() {
  * Forward request đến target bằng Puppeteer (thực sự dùng browser)
  */
 async function forwardRequest(req, res) {
+    // Log để xác nhận code mới đã được load
+    console.log('[PROXY] ========== forwardRequest called (NEW CODE v2.0) ==========');
     try {
         // Parse request URL
         const requestPath = req.url;
