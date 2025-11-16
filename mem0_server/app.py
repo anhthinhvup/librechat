@@ -302,6 +302,8 @@ if REVERSE_PROXY_URL:
         
         def patched_handle_request(self, request):
             """Redirect requests trong sync transport và thêm headers"""
+            sys.stderr.write(f"[PATCH] HTTPTransport.handle_request called with URL: {request.url if hasattr(request, 'url') else 'N/A'}\n")
+            sys.stderr.flush()
             if hasattr(request, 'url'):
                 url_str = str(request.url)
                 base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
@@ -313,11 +315,15 @@ if REVERSE_PROXY_URL:
                     else:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
+                    sys.stderr.write(f"[PATCH] Redirected URL in transport: {url_str} → {new_url}\n")
+                    sys.stderr.flush()
                 
                 # Thêm headers cho TẤT CẢ requests đến langhit.com
                 if "langhit.com" in str(request.url):
                     if hasattr(request, 'headers'):
                         headers = request.headers
+                        sys.stderr.write(f"[PATCH] Current headers in HTTPTransport: {list(headers.keys()) if hasattr(headers, 'keys') else 'N/A'}\n")
+                        sys.stderr.flush()
                         extra_headers = {}
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -340,15 +346,19 @@ if REVERSE_PROXY_URL:
                                 else:
                                     for k, v in extra_headers.items():
                                         headers[k] = v
-                                sys.stderr.write(f"[PATCH] Added headers to transport request: {list(extra_headers.keys())}\n")
+                                sys.stderr.write(f"[PATCH] ✅ Added headers in HTTPTransport: {list(extra_headers.keys())}\n")
                                 sys.stderr.flush()
                             except Exception as e:
-                                sys.stderr.write(f"[PATCH] Failed to add headers in transport: {e}\n")
+                                sys.stderr.write(f"[PATCH] ❌ Failed to add headers in HTTPTransport: {e}\n")
+                                import traceback
+                                traceback.print_exc(file=sys.stderr)
                                 sys.stderr.flush()
             return original_handle_request(self, request)
         
         async def patched_handle_async_request(self, request):
             """Redirect requests trong async transport và thêm headers"""
+            sys.stderr.write(f"[PATCH] AsyncHTTPTransport.handle_async_request called with URL: {request.url if hasattr(request, 'url') else 'N/A'}\n")
+            sys.stderr.flush()
             if hasattr(request, 'url'):
                 url_str = str(request.url)
                 base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
@@ -360,11 +370,15 @@ if REVERSE_PROXY_URL:
                     else:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
+                    sys.stderr.write(f"[PATCH] Redirected URL in async transport: {url_str} → {new_url}\n")
+                    sys.stderr.flush()
                 
                 # Thêm headers cho TẤT CẢ requests đến langhit.com
                 if "langhit.com" in str(request.url):
                     if hasattr(request, 'headers'):
                         headers = request.headers
+                        sys.stderr.write(f"[PATCH] Current headers in AsyncHTTPTransport: {list(headers.keys()) if hasattr(headers, 'keys') else 'N/A'}\n")
+                        sys.stderr.flush()
                         extra_headers = {}
                         if 'user-agent' not in headers and 'User-Agent' not in headers:
                             extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -387,12 +401,19 @@ if REVERSE_PROXY_URL:
                                 else:
                                     for k, v in extra_headers.items():
                                         headers[k] = v
-                                sys.stderr.write(f"[PATCH] Added headers to async transport request: {list(extra_headers.keys())}\n")
+                                sys.stderr.write(f"[PATCH] ✅ Added headers in AsyncHTTPTransport: {list(extra_headers.keys())}\n")
                                 sys.stderr.flush()
                             except Exception as e:
-                                sys.stderr.write(f"[PATCH] Failed to add headers in async transport: {e}\n")
+                                sys.stderr.write(f"[PATCH] ❌ Failed to add headers in AsyncHTTPTransport: {e}\n")
+                                import traceback
+                                traceback.print_exc(file=sys.stderr)
                                 sys.stderr.flush()
             return await original_handle_async_request(self, request)
+        
+        HTTPTransport.handle_request = patched_handle_request
+        AsyncHTTPTransport.handle_async_request = patched_handle_async_request
+        sys.stderr.write("[PATCH] ✅ Patched HTTPTransport and AsyncHTTPTransport\n")
+        sys.stderr.flush()
         
         HTTPTransport.handle_request = patched_handle_request
         AsyncHTTPTransport.handle_async_request = patched_handle_async_request
