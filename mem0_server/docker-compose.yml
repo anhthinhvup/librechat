@@ -8,7 +8,7 @@ services:
     container_name: cloudflare-proxy
     restart: always
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - PROXY_PORT=3000
       - TARGET_URL=https://langhit.com

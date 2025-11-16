@@ -16,7 +16,7 @@ docker rm -f cloudflare-proxy 2>/dev/null || true
 docker run -d \
   --name cloudflare-proxy \
   --restart always \
-  -p 3000:3000 \
+  -p 3001:3000 \
   -e PROXY_PORT=3000 \
   -e TARGET_URL=https://langhit.com \
   cloudflare-proxy:latest
@@ -46,7 +46,7 @@ docker run -d \
   --restart always \
   -p 8001:8001 \
   -e OPENAI_API_KEY=${OPENAI_API_KEY:-sk-SL4FdpsAirJCaVYeapOOFvi6Xy99Iwz7IjmvK2mGVT1oZWPU} \
-  -e CLOUDFLARE_PROXY_URL=http://host.docker.internal:3000 \
+  -e CLOUDFLARE_PROXY_URL=http://host.docker.internal:3001 \
   -v $(pwd)/mem0_data:/app/data \
   --network host \
   mem0-server:latest
@@ -62,7 +62,7 @@ if ! docker ps | grep -q mem0-server; then
 fi
 
 echo "=== Services started successfully ==="
-echo "Cloudflare Proxy: http://localhost:3000"
+echo "Cloudflare Proxy: http://localhost:3001"
 echo "Mem0 Server: http://localhost:8001"
 echo ""
 echo "To view logs:"
