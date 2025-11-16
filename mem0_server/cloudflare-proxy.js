@@ -157,31 +157,48 @@ async function forwardRequest(req, res) {
                 const requestBody = Buffer.concat(body);
                 const bodyText = requestBody.length > 0 ? requestBody.toString('utf8') : null;
                 
+                // Đảm bảo page đã sẵn sàng
+                if (!page) {
+                    throw new Error('Puppeteer page not initialized');
+                }
+                
+                // Lấy cookies hiện tại để log
+                const cookies = await page.cookies();
+                console.log(`[PROXY] Current cookies: ${cookies.length} cookies`);
+                
                 // Dùng Puppeteer để thực hiện request trong browser context
-                // Điều này đảm bảo cookies và headers được xử lý đúng cách
+                console.log('[PROXY] Executing fetch in browser context...');
                 const response = await page.evaluate(async ({ url, method, headers, body }) => {
-                    const fetchOptions = {
-                        method: method,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            ...headers,
-                        },
-                    };
-                    
-                    if (body) {
-                        fetchOptions.body = body;
+                    try {
+                        const fetchOptions = {
+                            method: method,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                ...headers,
+                            },
+                        };
+                        
+                        if (body) {
+                            fetchOptions.body = body;
+                        }
+                        
+                        console.log('[BROWSER] Fetching:', url);
+                        const response = await fetch(url, fetchOptions);
+                        const responseText = await response.text();
+                        
+                        return {
+                            status: response.status,
+                            statusText: response.statusText,
+                            headers: Object.fromEntries(response.headers.entries()),
+                            body: responseText,
+                        };
+                    } catch (error) {
+                        return {
+                            error: error.message,
+                            stack: error.stack,
+                        };
                     }
-                    
-                    const response = await fetch(url, fetchOptions);
-                    const responseText = await response.text();
-                    
-                    return {
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: Object.fromEntries(response.headers.entries()),
-                        body: responseText,
-                    };
                 }, {
                     url: targetUrl.href,
                     method: method,
@@ -191,10 +208,25 @@ async function forwardRequest(req, res) {
                     body: bodyText,
                 });
                 
+                // Kiểm tra nếu có error từ browser
+                if (response.error) {
+                    console.error('[PROXY] Browser error:', response.error);
+                    console.error('[PROXY] Browser stack:', response.stack);
+                    res.writeHead(500);
+                    res.end(JSON.stringify({ error: response.error }));
+                    return;
+                }
+                
                 // Log response
                 console.log(`[PROXY] Response: ${response.status} ${response.statusText}`);
-                const preview = response.body.substring(0, Math.min(200, response.body.length));
-                console.log(`[PROXY] Response preview: ${preview}`);
+                const preview = response.body.substring(0, Math.min(500, response.body.length));
+                console.log(`[PROXY] Response preview (first 500 chars): ${preview}`);
+                
+                // Kiểm tra nếu response là HTML (Cloudflare challenge)
+                if (response.body.includes('<html') || response.body.includes('cloudflare')) {
+                    console.error('[PROXY] ⚠️ Response appears to be HTML (Cloudflare challenge?)');
+                    console.error('[PROXY] Full response:', response.body);
+                }
                 
                 // Set response headers
                 const responseHeaders = { ...response.headers };
@@ -208,7 +240,7 @@ async function forwardRequest(req, res) {
                 console.error('[PROXY] Error in Puppeteer request:', error.message);
                 console.error('[PROXY] Stack:', error.stack);
                 res.writeHead(500);
-                res.end(JSON.stringify({ error: error.message }));
+                res.end(JSON.stringify({ error: error.message, details: error.stack }));
             }
         });
         
