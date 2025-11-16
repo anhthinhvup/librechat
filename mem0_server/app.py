@@ -308,18 +308,19 @@ if REVERSE_PROXY_URL:
                 url_str = str(request.url)
                 base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
                 
-                # Redirect URL nếu là api.openai.com
+                # Redirect URL nếu là api.openai.com - PHẢI LÀM TRƯỚC KHI THÊM HEADERS
                 if "api.openai.com" in url_str:
                     if "/v1" in url_str:
                         new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
                     else:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
-                    sys.stderr.write(f"[PATCH] Redirected URL in transport: {url_str} → {new_url}\n")
+                    sys.stderr.write(f"[PATCH] ✅ Redirected URL in transport: {url_str} → {new_url}\n")
                     sys.stderr.flush()
+                    url_str = str(request.url)  # Update url_str sau khi redirect
                 
-                # Thêm headers cho TẤT CẢ requests đến langhit.com
-                if "langhit.com" in str(request.url):
+                # Thêm headers cho TẤT CẢ requests đến langhit.com (kể cả đã redirect)
+                if "langhit.com" in url_str:
                     if hasattr(request, 'headers'):
                         headers = request.headers
                         sys.stderr.write(f"[PATCH] Current headers in HTTPTransport: {list(headers.keys()) if hasattr(headers, 'keys') else 'N/A'}\n")
@@ -363,18 +364,19 @@ if REVERSE_PROXY_URL:
                 url_str = str(request.url)
                 base_proxy_url = REVERSE_PROXY_URL.rstrip("/v1").rstrip("/")
                 
-                # Redirect URL nếu là api.openai.com
+                # Redirect URL nếu là api.openai.com - PHẢI LÀM TRƯỚC KHI THÊM HEADERS
                 if "api.openai.com" in url_str:
                     if "/v1" in url_str:
                         new_url = url_str.replace("https://api.openai.com/v1", base_proxy_url + "/v1")
                     else:
                         new_url = url_str.replace("https://api.openai.com", base_proxy_url)
                     request.url = URL(new_url)
-                    sys.stderr.write(f"[PATCH] Redirected URL in async transport: {url_str} → {new_url}\n")
+                    sys.stderr.write(f"[PATCH] ✅ Redirected URL in async transport: {url_str} → {new_url}\n")
                     sys.stderr.flush()
+                    url_str = str(request.url)  # Update url_str sau khi redirect
                 
-                # Thêm headers cho TẤT CẢ requests đến langhit.com
-                if "langhit.com" in str(request.url):
+                # Thêm headers cho TẤT CẢ requests đến langhit.com (kể cả đã redirect)
+                if "langhit.com" in url_str:
                     if hasattr(request, 'headers'):
                         headers = request.headers
                         sys.stderr.write(f"[PATCH] Current headers in AsyncHTTPTransport: {list(headers.keys()) if hasattr(headers, 'keys') else 'N/A'}\n")
