@@ -621,7 +621,7 @@ def get_memory(user_id: str) -> Memory:
             config["embedder"] = {
                 "provider": "openai",
                 "config": {
-                    "model": "text-embedding-3-small",  # Model nhẹ, rẻ
+                    "model": "text-embedding-ada-002",  # Model cũ hơn, được hỗ trợ rộng rãi hơn
                     "api_key": OPENAI_API_KEY,
                 }
             }
