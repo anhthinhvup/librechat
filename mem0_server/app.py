@@ -14,7 +14,12 @@ import traceback
 # Cấu hình reverse proxy (langhit.com)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_REVERSE_PROXY = os.getenv("OPENAI_REVERSE_PROXY", "") or os.getenv("OPENAI_API_BASE_URL", "")
-REVERSE_PROXY_URL = OPENAI_REVERSE_PROXY.rstrip("/") if OPENAI_REVERSE_PROXY else None
+CLOUDFLARE_PROXY_URL = os.getenv("CLOUDFLARE_PROXY_URL", "http://localhost:3000")
+# Nếu có CLOUDFLARE_PROXY_URL, dùng nó thay vì direct reverse proxy
+if os.getenv("CLOUDFLARE_PROXY_URL"):
+    REVERSE_PROXY_URL = CLOUDFLARE_PROXY_URL.rstrip("/")
+else:
+    REVERSE_PROXY_URL = OPENAI_REVERSE_PROXY.rstrip("/") if OPENAI_REVERSE_PROXY else None
 
 # Unset các env variables TRƯỚC KHI import bất kỳ thứ gì
 # Mem0 có thể đọc từ các env này và tự động thêm base_url vào OpenAIConfig

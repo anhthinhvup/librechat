@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  cloudflare-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: cloudflare-proxy
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PROXY_PORT=3000
+      - TARGET_URL=https://langhit.com
+    networks:
+      - mem0-network
+
+  mem0-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mem0-server
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLOUDFLARE_PROXY_URL=http://cloudflare-proxy:3000
+    volumes:
+      - ../mem0_data:/app/data
+    depends_on:
+      - cloudflare-proxy
+    networks:
+      - mem0-network
+
+networks:
+  mem0-network:
+    driver: bridge
+
