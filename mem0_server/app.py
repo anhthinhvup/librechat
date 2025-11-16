@@ -679,19 +679,17 @@ def get_memory(user_id: str) -> Memory:
             
             # Tạo Memory với vector_store=None và embedder=None để TẮT HOÀN TOÀN embeddings
             # Mem0 sẽ dùng text-based search thay vì vector search
-            # Sử dụng Memory.from_config với config có vector_store=None và embedder=None
-            config = {
-                "vector_store": None,  # Tắt vector store
-                "embedder": None,      # Tắt embedder - KHÔNG BAO GIỜ gọi embeddings.create
-                "llm": {
-                    "provider": "openai",
-                    "config": {
-                        "model": "gpt-4o-mini",  # Giữ nguyên model hiện tại
-                        "api_key": OPENAI_API_KEY,
+            # KHÔNG BAO GIỜ gọi embeddings.create API
+            memory = Memory(
+                client=client,
+                config={
+                    "vector_store": None,  # Tắt vector store
+                    "embedder": None,      # Tắt embedder - KHÔNG BAO GIỜ gọi embeddings.create
+                    "llm": {
+                        "model": "gpt-4o-mini"  # Giữ nguyên model hiện tại
                     }
                 }
-            }
-            memory = Memory.from_config(config)
+            )
             
             # Đảm bảo embedding_model là None
             if hasattr(memory, 'embedding_model'):
