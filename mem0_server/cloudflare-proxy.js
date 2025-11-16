@@ -162,8 +162,10 @@ async function forwardRequest(req, res) {
         
         req.on('end', async () => {
             try {
+                console.log('[PROXY] Request body received, length:', body.length);
                 const requestBody = Buffer.concat(body);
                 const bodyText = requestBody.length > 0 ? requestBody.toString('utf8') : null;
+                console.log('[PROXY] Request body text length:', bodyText ? bodyText.length : 0);
                 
                 // Đảm bảo page đã sẵn sàng
                 if (!page) {
@@ -174,9 +176,10 @@ async function forwardRequest(req, res) {
                 const cookies = await page.cookies();
                 console.log(`[PROXY] Current cookies: ${cookies.length} cookies`);
                 
-                // Dùng Puppeteer để thực hiện request trong browser context
+                // Dùng Puppeteer để thực hiện request trong browser context với timeout
                 console.log('[PROXY] Executing fetch in browser context...');
-                const response = await page.evaluate(async ({ url, method, headers, body }) => {
+                const response = await Promise.race([
+                    page.evaluate(async ({ url, method, headers, body }) => {
                     try {
                         const fetchOptions = {
                             method: method,
@@ -218,10 +221,16 @@ async function forwardRequest(req, res) {
                         'Authorization': req.headers['authorization'] || req.headers['Authorization'] || '',
                     },
                     body: bodyText,
-                });
+                    }),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Puppeteer evaluate timeout after 30s')), 30000)
+                    ),
+                ]);
+                
+                console.log('[PROXY] Puppeteer evaluate completed');
                 
                 // Kiểm tra nếu có error từ browser
-                if (response.error) {
+                if (response && response.error) {
                     console.error('[PROXY] Browser error:', response.error);
                     console.error('[PROXY] Browser stack:', response.stack);
                     res.writeHead(500);
@@ -229,24 +238,33 @@ async function forwardRequest(req, res) {
                     return;
                 }
                 
+                // Kiểm tra response
+                if (!response) {
+                    throw new Error('No response from Puppeteer');
+                }
+                
                 // Log response
                 console.log(`[PROXY] Response: ${response.status} ${response.statusText}`);
-                const preview = response.body.substring(0, Math.min(500, response.body.length));
-                console.log(`[PROXY] Response preview (first 500 chars): ${preview}`);
-                
-                // Kiểm tra nếu response là HTML (Cloudflare challenge)
-                if (response.body.includes('<html') || response.body.includes('cloudflare')) {
-                    console.error('[PROXY] ⚠️ Response appears to be HTML (Cloudflare challenge?)');
-                    console.error('[PROXY] Full response:', response.body);
+                if (response.body) {
+                    const preview = response.body.substring(0, Math.min(500, response.body.length));
+                    console.log(`[PROXY] Response preview (first 500 chars): ${preview}`);
+                    
+                    // Kiểm tra nếu response là HTML (Cloudflare challenge)
+                    if (response.body.includes('<html') || response.body.includes('cloudflare')) {
+                        console.error('[PROXY] ⚠️ Response appears to be HTML (Cloudflare challenge?)');
+                        console.error('[PROXY] Full response (first 1000 chars):', response.body.substring(0, 1000));
+                    }
+                } else {
+                    console.error('[PROXY] ⚠️ Response body is empty or undefined');
                 }
                 
                 // Set response headers
-                const responseHeaders = { ...response.headers };
+                const responseHeaders = response.headers || {};
                 delete responseHeaders['content-encoding'];
                 delete responseHeaders['transfer-encoding'];
                 
-                res.writeHead(response.status, responseHeaders);
-                res.end(response.body);
+                res.writeHead(response.status || 500, responseHeaders);
+                res.end(response.body || JSON.stringify({ error: 'Empty response from proxy' }));
                 
             } catch (error) {
                 console.error('[PROXY] Error in Puppeteer request:', error.message);
