@@ -60,47 +60,53 @@ async function refreshCookies() {
     try {
         console.log('[PROXY] Refreshing Cloudflare cookies...');
         
-        // Navigate đến target URL
-        await page.goto(TARGET_URL, {
+        // Navigate đến target URL - dùng /v1 để trigger API endpoint
+        const testUrl = TARGET_URL + '/v1/models';
+        console.log(`[PROXY] Navigating to: ${testUrl}`);
+        
+        await page.goto(testUrl, {
             waitUntil: 'networkidle2',
-            timeout: 60000, // Tăng timeout lên 60s
+            timeout: 60000,
         });
 
         // Đợi để Cloudflare challenge hoàn thành (nếu có)
-        // Kiểm tra xem có challenge không
         try {
             // Đợi tối đa 30s để challenge hoàn thành
             await page.waitForFunction(
                 () => {
-                    // Kiểm tra xem có element challenge không
-                    const challenge = document.querySelector('#challenge-form, .cf-browser-verification, #cf-challenge-running');
-                    return !challenge || challenge.style.display === 'none';
+                    const challenge = document.querySelector('#challenge-form, .cf-browser-verification, #cf-challenge-running, .cf-im-under-attack');
+                    return !challenge || challenge.style.display === 'none' || challenge.offsetParent === null;
                 },
                 { timeout: 30000 }
             );
+            console.log('[PROXY] Cloudflare challenge completed (or no challenge)');
         } catch (e) {
-            // Nếu không có challenge, tiếp tục
-            console.log('[PROXY] No Cloudflare challenge detected or already passed');
+            console.log('[PROXY] No Cloudflare challenge detected or timeout');
         }
         
-        // Đợi thêm một chút để đảm bảo cookies được set
-        await page.waitForTimeout(3000);
+        // Đợi thêm để đảm bảo cookies được set
+        await page.waitForTimeout(5000);
 
-        // Lấy cookies
+        // Lấy cookies từ domain
         const cookies = await page.cookies();
         cfCookies = cookies;
         lastCookieUpdate = Date.now();
         
         console.log(`[PROXY] Cookies refreshed: ${cookies.length} cookies`);
+        let hasCFCookies = false;
         cookies.forEach(cookie => {
             if (cookie.name.includes('cf_') || cookie.name.includes('__cf')) {
                 console.log(`[PROXY] CF Cookie: ${cookie.name} = ${cookie.value.substring(0, 20)}...`);
+                hasCFCookies = true;
             }
         });
         
-        // Nếu không có cookies, có thể Cloudflare không có challenge
-        if (cookies.length === 0) {
-            console.log('[PROXY] Warning: No cookies found. Cloudflare may not have challenge or cookies are set differently.');
+        // Nếu không có CF cookies, log tất cả cookies để debug
+        if (!hasCFCookies) {
+            console.log('[PROXY] No Cloudflare cookies found. All cookies:');
+            cookies.forEach(cookie => {
+                console.log(`[PROXY]   - ${cookie.name} (domain: ${cookie.domain})`);
+            });
         }
     } catch (error) {
         console.error('[PROXY] Error refreshing cookies:', error.message);
