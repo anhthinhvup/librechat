@@ -46,6 +46,14 @@ async function initBrowser() {
     // Set User-Agent giống browser thật
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
+    // Listen to console messages from page
+    page.on('console', msg => {
+        const text = msg.text();
+        if (text.includes('[BROWSER]')) {
+            console.log(text);
+        }
+    });
+    
     // Navigate để lấy cookies
     await refreshCookies();
     
@@ -183,9 +191,12 @@ async function forwardRequest(req, res) {
                             fetchOptions.body = body;
                         }
                         
-                        console.log('[BROWSER] Fetching:', url);
+                        console.log('[BROWSER] Fetching:', url, 'Method:', method);
                         const response = await fetch(url, fetchOptions);
                         const responseText = await response.text();
+                        
+                        console.log('[BROWSER] Response status:', response.status, response.statusText);
+                        console.log('[BROWSER] Response length:', responseText.length);
                         
                         return {
                             status: response.status,
@@ -194,6 +205,7 @@ async function forwardRequest(req, res) {
                             body: responseText,
                         };
                     } catch (error) {
+                        console.error('[BROWSER] Fetch error:', error.message);
                         return {
                             error: error.message,
                             stack: error.stack,
