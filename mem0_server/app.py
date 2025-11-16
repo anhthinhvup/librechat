@@ -617,7 +617,11 @@ def get_memory(user_id: str) -> Memory:
         
         # Dùng OpenAI embedder nếu có API key
         # httpx transport đã được patch để redirect sang reverse proxy
+        # Lưu ý: langhit.com có thể không hỗ trợ embeddings models
+        # Nếu không hỗ trợ, có thể bỏ qua embedder và dùng text-based search
         if OPENAI_API_KEY:
+            # Thử dùng text-embedding-ada-002 (model cũ, được hỗ trợ rộng rãi)
+            # Nếu vẫn lỗi, có thể langhit.com không hỗ trợ embeddings
             config["embedder"] = {
                 "provider": "openai",
                 "config": {
