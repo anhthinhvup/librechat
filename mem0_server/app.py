@@ -638,6 +638,32 @@ def get_memory(user_id: str) -> Memory:
                 sys.stderr.write(f"[DEBUG] Embedder model: {embedder_model}\n")
             sys.stderr.flush()
             memory = Memory.from_config(config)
+            
+            # Patch memory instance để tắt embedding_model (vì langhit.com không hỗ trợ embeddings)
+            if hasattr(memory, 'embedding_model') and memory.embedding_model is not None:
+                sys.stderr.write(f"[PATCH] Disabling embedding_model for user: {user_id}\n")
+                sys.stderr.flush()
+                memory.embedding_model = None
+            
+            # Patch _add_to_vector_store để skip embeddings nếu embedding_model là None
+            if hasattr(memory, '_add_to_vector_store'):
+                original_add_to_vector_store = memory._add_to_vector_store
+                
+                def patched_add_to_vector_store(self, new_mem, user_id):
+                    """Skip embeddings nếu embedding_model là None"""
+                    if self.embedding_model is None:
+                        # Không dùng embeddings, chỉ lưu text
+                        sys.stderr.write(f"[PATCH] Skipping embeddings for user: {user_id}, using text-based storage\n")
+                        sys.stderr.flush()
+                        # Return empty embeddings list để mem0 dùng text-based search
+                        return []
+                    else:
+                        return original_add_to_vector_store(self, new_mem, user_id)
+                
+                memory._add_to_vector_store = patched_add_to_vector_store.__get__(memory, type(memory))
+                sys.stderr.write(f"[PATCH] ✅ Patched _add_to_vector_store to skip embeddings\n")
+                sys.stderr.flush()
+            
             memory_instances[user_id] = memory
             sys.stderr.write(f"[DEBUG] ✅ Created Memory instance for user: {user_id}\n")
             sys.stderr.flush()
