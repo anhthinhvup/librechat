@@ -59,13 +59,32 @@ async function initBrowser() {
 async function refreshCookies() {
     try {
         console.log('[PROXY] Refreshing Cloudflare cookies...');
+        
+        // Navigate đến target URL
         await page.goto(TARGET_URL, {
             waitUntil: 'networkidle2',
-            timeout: 30000,
+            timeout: 60000, // Tăng timeout lên 60s
         });
 
-        // Đợi một chút để Cloudflare challenge hoàn thành (nếu có)
-        await page.waitForTimeout(5000);
+        // Đợi để Cloudflare challenge hoàn thành (nếu có)
+        // Kiểm tra xem có challenge không
+        try {
+            // Đợi tối đa 30s để challenge hoàn thành
+            await page.waitForFunction(
+                () => {
+                    // Kiểm tra xem có element challenge không
+                    const challenge = document.querySelector('#challenge-form, .cf-browser-verification, #cf-challenge-running');
+                    return !challenge || challenge.style.display === 'none';
+                },
+                { timeout: 30000 }
+            );
+        } catch (e) {
+            // Nếu không có challenge, tiếp tục
+            console.log('[PROXY] No Cloudflare challenge detected or already passed');
+        }
+        
+        // Đợi thêm một chút để đảm bảo cookies được set
+        await page.waitForTimeout(3000);
 
         // Lấy cookies
         const cookies = await page.cookies();
@@ -75,11 +94,17 @@ async function refreshCookies() {
         console.log(`[PROXY] Cookies refreshed: ${cookies.length} cookies`);
         cookies.forEach(cookie => {
             if (cookie.name.includes('cf_') || cookie.name.includes('__cf')) {
-                console.log(`[PROXY] CF Cookie: ${cookie.name}`);
+                console.log(`[PROXY] CF Cookie: ${cookie.name} = ${cookie.value.substring(0, 20)}...`);
             }
         });
+        
+        // Nếu không có cookies, có thể Cloudflare không có challenge
+        if (cookies.length === 0) {
+            console.log('[PROXY] Warning: No cookies found. Cloudflare may not have challenge or cookies are set differently.');
+        }
     } catch (error) {
         console.error('[PROXY] Error refreshing cookies:', error.message);
+        console.error('[PROXY] Stack:', error.stack);
     }
 }
 
