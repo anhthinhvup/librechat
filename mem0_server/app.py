@@ -414,11 +414,9 @@ if REVERSE_PROXY_URL:
         AsyncHTTPTransport.handle_async_request = patched_handle_async_request
         sys.stderr.write("[PATCH] ✅ Patched HTTPTransport and AsyncHTTPTransport\n")
         sys.stderr.flush()
-        
-        HTTPTransport.handle_request = patched_handle_request
-        AsyncHTTPTransport.handle_async_request = patched_handle_async_request
     except Exception as e:
-        pass
+        sys.stderr.write(f"[PATCH] ❌ Failed to patch HTTPTransport: {e}\n")
+        sys.stderr.flush()
     
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
