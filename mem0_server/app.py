@@ -605,64 +605,52 @@ memory_instances: Dict[str, Memory] = {}
 
 def get_memory(user_id: str) -> Memory:
     if user_id not in memory_instances:
-        config = {
-            "vector_store": {
-                "provider": "qdrant",
-                "config": {
-                    "collection_name": f"mem0_{user_id}",
-                    "path": "/app/data/qdrant",
-                }
-            }
-        }
-        
-        # Dùng OpenAI embedder nếu có API key
+        # Tạo OpenAI client với reverse proxy
         # httpx transport đã được patch để redirect sang reverse proxy
-        # Lưu ý: langhit.com KHÔNG hỗ trợ embeddings models (đã test: cả ada-002 và 3-small đều 403)
-        # KHÔNG set embedder để mem0 dùng text-based search thay vì vector search
-        # mem0 sẽ tự động fallback sang text-based search nếu không có embedder
-        if OPENAI_API_KEY:
-            # Dùng OpenAI provider
-            # KHÔNG set base_url - httpx transport đã được patch để redirect
-            config["llm"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "gpt-4o-mini",
-                    "api_key": OPENAI_API_KEY,
-                    # KHÔNG set base_url ở đây
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is required")
+        
+        try:
+            import openai
+            # Tạo OpenAI client - httpx transport đã được patch để redirect
+            client = openai.OpenAI(
+                api_key=OPENAI_API_KEY,
+                # KHÔNG set base_url - httpx transport đã được patch để redirect
+            )
+            
+            sys.stderr.write(f"[DEBUG] Creating Memory WITHOUT embeddings for user: {user_id}\n")
+            sys.stderr.flush()
+            
+            # Tạo Memory với vector_store=None và embedder=None để TẮT HOÀN TOÀN embeddings
+            # Mem0 sẽ dùng text-based search thay vì vector search
+            # Sử dụng Memory.from_config với config có vector_store=None và embedder=None
+            config = {
+                "vector_store": None,  # Tắt vector store
+                "embedder": None,      # Tắt embedder - KHÔNG BAO GIỜ gọi embeddings.create
+                "llm": {
+                    "provider": "openai",
+                    "config": {
+                        "model": "gpt-4o-mini",  # Giữ nguyên model hiện tại
+                        "api_key": OPENAI_API_KEY,
+                    }
                 }
             }
-        try:
-            sys.stderr.write(f"[DEBUG] Creating Memory with config keys: {list(config.keys())}\n")
-            if "embedder" in config and "config" in config["embedder"]:
-                embedder_model = config["embedder"]["config"].get("model", "N/A")
-                sys.stderr.write(f"[DEBUG] Embedder model: {embedder_model}\n")
-            sys.stderr.flush()
             memory = Memory.from_config(config)
             
-            # Patch embedding_model.embed() để return empty list (vì langhit.com không hỗ trợ embeddings)
-            if hasattr(memory, 'embedding_model') and memory.embedding_model is not None:
-                sys.stderr.write(f"[PATCH] Patching embedding_model.embed() for user: {user_id}\n")
+            # Đảm bảo embedding_model là None
+            if hasattr(memory, 'embedding_model'):
+                memory.embedding_model = None
+                sys.stderr.write(f"[PATCH] ✅ Set embedding_model = None\n")
                 sys.stderr.flush()
-                
-                # Lưu original embed method
-                original_embed = memory.embedding_model.embed
-                
-                def patched_embed(self, text, operation="add"):
-                    """Return empty list để skip embeddings API call"""
-                    sys.stderr.write(f"[PATCH] Skipping embeddings API call, returning empty list\n")
-                    sys.stderr.flush()
-                    # Return empty list với shape phù hợp
-                    # mem0 sẽ dùng text-based search nếu không có embeddings
-                    return []
-                
-                # Patch embed method
-                import types
-                memory.embedding_model.embed = types.MethodType(patched_embed, memory.embedding_model)
-                sys.stderr.write(f"[PATCH] ✅ Patched embedding_model.embed() to skip API calls\n")
+            
+            # Đảm bảo vector_store là None
+            if hasattr(memory, 'vector_store'):
+                memory.vector_store = None
+                sys.stderr.write(f"[PATCH] ✅ Set vector_store = None\n")
                 sys.stderr.flush()
             
             memory_instances[user_id] = memory
-            sys.stderr.write(f"[DEBUG] ✅ Created Memory instance for user: {user_id}\n")
+            sys.stderr.write(f"[DEBUG] ✅ Created Memory instance WITHOUT embeddings for user: {user_id}\n")
             sys.stderr.flush()
         except Exception as e:
             sys.stderr.write("=" * 80 + "\n")
