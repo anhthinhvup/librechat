@@ -468,6 +468,9 @@ try:
     if REVERSE_PROXY_URL:
         try:
             import openai
+            base_proxy_url = REVERSE_PROXY_URL.rstrip('/v1').rstrip('/')
+            
+            # Patch OpenAI.__init__ để thêm default headers
             original_openai_init = openai.OpenAI.__init__
             
             def patched_openai_init(self, *args, **kwargs):
@@ -475,7 +478,6 @@ try:
                 if 'default_headers' not in kwargs:
                     kwargs['default_headers'] = {}
                 
-                base_proxy_url = REVERSE_PROXY_URL.rstrip('/v1').rstrip('/')
                 headers = kwargs['default_headers']
                 
                 # Headers đầy đủ để bypass Cloudflare
@@ -506,10 +508,45 @@ try:
                 return original_openai_init(self, *args, **kwargs)
             
             openai.OpenAI.__init__ = patched_openai_init
+            
+            # Patch openai._base_client.BaseClient.request để đảm bảo headers được merge vào mọi request
+            try:
+                from openai._base_client import BaseClient as OpenAIBaseClient
+                original_openai_request = OpenAIBaseClient.request
+                
+                async def patched_openai_request(self, *args, **kwargs):
+                    # Merge headers vào request_options nếu có
+                    if 'extra_headers' not in kwargs:
+                        kwargs['extra_headers'] = {}
+                    
+                    extra_headers = kwargs['extra_headers']
+                    if 'User-Agent' not in extra_headers and 'user-agent' not in extra_headers:
+                        extra_headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    if 'Accept' not in extra_headers:
+                        extra_headers['Accept'] = 'application/json'
+                    if 'Accept-Encoding' not in extra_headers:
+                        extra_headers['Accept-Encoding'] = 'gzip, deflate, br'
+                    if 'Origin' not in extra_headers:
+                        extra_headers['Origin'] = base_proxy_url
+                    if 'Referer' not in extra_headers:
+                        extra_headers['Referer'] = base_proxy_url + '/'
+                    
+                    sys.stderr.write(f"[PATCH] ✅ Merged headers in OpenAI.request: {list(extra_headers.keys())}\n")
+                    sys.stderr.flush()
+                    
+                    return await original_openai_request(self, *args, **kwargs)
+                
+                OpenAIBaseClient.request = patched_openai_request
+                sys.stderr.write("[PATCH] ✅ Patched OpenAI.BaseClient.request to merge headers\n")
+                sys.stderr.flush()
+            except Exception as e:
+                sys.stderr.write(f"[PATCH] ⚠️ Failed to patch OpenAI.BaseClient.request: {e}\n")
+                sys.stderr.flush()
+            
             sys.stderr.write("[PATCH] ✅ Patched OpenAI.__init__ to add default headers\n")
             sys.stderr.flush()
         except Exception as e:
-            sys.stderr.write(f"[PATCH] ❌ Failed to patch OpenAI.__init__: {e}\n")
+            sys.stderr.write(f"[PATCH] ❌ Failed to patch OpenAI: {e}\n")
             sys.stderr.flush()
     
 except ImportError as e:
