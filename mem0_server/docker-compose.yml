@@ -24,10 +24,10 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-SL4FdpsAirJCaVYeapOOFvi6Xy99Iwz7IjmvK2mGVT1oZWPU}
       - CLOUDFLARE_PROXY_URL=http://cloudflare-proxy:3000
     volumes:
-      - ../mem0_data:/app/data
+      - ./mem0_data:/app/data
     depends_on:
       - cloudflare-proxy
     networks:
