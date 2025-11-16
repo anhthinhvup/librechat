@@ -135,41 +135,14 @@ async function getCookies() {
 }
 
 /**
- * Forward request đến target với cookies
+ * Forward request đến target bằng Puppeteer (thực sự dùng browser)
  */
 async function forwardRequest(req, res) {
     try {
-        // Parse request URL - giữ nguyên path từ request
+        // Parse request URL
         const requestPath = req.url;
         const targetUrl = new URL(requestPath, TARGET_URL);
         const method = req.method;
-        const headers = { ...req.headers };
-        
-        // Remove headers không cần thiết
-        delete headers.host;
-        delete headers['content-length'];
-        delete headers['connection'];
-        delete headers['accept-encoding']; // Để Node.js tự xử lý
-        
-        // Lấy cookies từ Puppeteer
-        const cookies = await getCookies();
-        const cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-        if (cookieString) {
-            headers['cookie'] = cookieString;
-            console.log(`[PROXY] Using cookies: ${cookieString.substring(0, 50)}...`);
-        } else {
-            console.log('[PROXY] Warning: No cookies available');
-        }
-        
-        // Set headers giống browser
-        headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-        headers['accept'] = headers['accept'] || 'application/json';
-        headers['accept-language'] = 'en-US,en;q=0.9';
-        headers['origin'] = TARGET_URL;
-        headers['referer'] = TARGET_URL + '/';
-        headers['sec-fetch-dest'] = 'empty';
-        headers['sec-fetch-mode'] = 'cors';
-        headers['sec-fetch-site'] = 'same-origin';
         
         console.log(`[PROXY] Forwarding ${method} ${requestPath} → ${targetUrl.href}`);
         
@@ -179,59 +152,64 @@ async function forwardRequest(req, res) {
             body.push(chunk);
         });
         
-        req.on('end', () => {
-            const requestBody = Buffer.concat(body);
-            
-            // Forward request
-            const options = {
-                hostname: targetUrl.hostname,
-                port: targetUrl.port || 443,
-                path: targetUrl.pathname + targetUrl.search,
-                method: method,
-                headers: {
-                    ...headers,
-                    'content-length': requestBody.length,
-                },
-            };
-            
-            const proxyReq = https.request(options, (proxyRes) => {
-                // Log response status
-                console.log(`[PROXY] Response: ${proxyRes.statusCode} ${proxyRes.statusMessage}`);
+        req.on('end', async () => {
+            try {
+                const requestBody = Buffer.concat(body);
+                const bodyText = requestBody.length > 0 ? requestBody.toString('utf8') : null;
                 
-                // Copy response headers (trừ content-encoding để tự decode)
-                const responseHeaders = { ...proxyRes.headers };
+                // Dùng Puppeteer để thực hiện request trong browser context
+                // Điều này đảm bảo cookies và headers được xử lý đúng cách
+                const response = await page.evaluate(async ({ url, method, headers, body }) => {
+                    const fetchOptions = {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            ...headers,
+                        },
+                    };
+                    
+                    if (body) {
+                        fetchOptions.body = body;
+                    }
+                    
+                    const response = await fetch(url, fetchOptions);
+                    const responseText = await response.text();
+                    
+                    return {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: Object.fromEntries(response.headers.entries()),
+                        body: responseText,
+                    };
+                }, {
+                    url: targetUrl.href,
+                    method: method,
+                    headers: {
+                        'Authorization': req.headers['authorization'] || req.headers['Authorization'] || '',
+                    },
+                    body: bodyText,
+                });
+                
+                // Log response
+                console.log(`[PROXY] Response: ${response.status} ${response.statusText}`);
+                const preview = response.body.substring(0, Math.min(200, response.body.length));
+                console.log(`[PROXY] Response preview: ${preview}`);
+                
+                // Set response headers
+                const responseHeaders = { ...response.headers };
                 delete responseHeaders['content-encoding'];
                 delete responseHeaders['transfer-encoding'];
                 
-                res.writeHead(proxyRes.statusCode, responseHeaders);
+                res.writeHead(response.status, responseHeaders);
+                res.end(response.body);
                 
-                // Collect response để log nếu cần
-                let responseBody = [];
-                proxyRes.on('data', chunk => {
-                    responseBody.push(chunk);
-                    res.write(chunk);
-                });
-                
-                proxyRes.on('end', () => {
-                    res.end();
-                    // Log first 200 chars of response để debug
-                    const fullResponse = Buffer.concat(responseBody);
-                    const preview = fullResponse.toString('utf8', 0, Math.min(200, fullResponse.length));
-                    console.log(`[PROXY] Response preview: ${preview.substring(0, 200)}`);
-                });
-            });
-            
-            proxyReq.on('error', (error) => {
-                console.error('[PROXY] Error forwarding request:', error.message);
+            } catch (error) {
+                console.error('[PROXY] Error in Puppeteer request:', error.message);
+                console.error('[PROXY] Stack:', error.stack);
                 res.writeHead(500);
                 res.end(JSON.stringify({ error: error.message }));
-            });
-            
-            // Write request body
-            if (requestBody.length > 0) {
-                proxyReq.write(requestBody);
             }
-            proxyReq.end();
         });
         
     } catch (error) {
