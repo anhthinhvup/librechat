@@ -674,19 +674,18 @@ def get_memory(user_id: str) -> Memory:
             # Mem0 sẽ dùng text-based search thay vì vector search
             # KHÔNG BAO GIỜ gọi embeddings.create API
             # httpx transport đã được patch để redirect sang reverse proxy
-            config = {
-                "vector_store": None,  # Tắt vector store
-                "embedder": None,      # Tắt embedder - KHÔNG BAO GIỜ gọi embeddings.create
-                "llm": {
-                    "provider": "openai",
-                    "config": {
-                        "api_key": OPENAI_API_KEY,
-                        "model": "gpt-4o-mini"
-                    }
-                }
-            }
+            from mem0.configs.memory import MemoryConfig
             
-            memory = Memory.from_config(config)
+            config = MemoryConfig(
+                vector_store=None,
+                embedder=None,
+                llm={
+                    "provider": "openai",
+                    "model": "gpt-4o-mini"
+                }
+            )
+            
+            memory = Memory(config=config)
             
             # Đảm bảo embedding_model là None
             if hasattr(memory, 'embedding_model'):
