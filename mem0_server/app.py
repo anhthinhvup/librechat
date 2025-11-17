@@ -670,20 +670,15 @@ def get_memory(user_id: str) -> Memory:
             sys.stderr.write(f"[DEBUG] Creating Memory WITHOUT embeddings for user: {user_id}\n")
             sys.stderr.flush()
             
-            # Tạo Memory với vector_store={"provider": "none"} và embedder={"provider": "none"}
-            # để TẮT HOÀN TOÀN embeddings
+            # Tạo Memory với vector_store=None và embedder=None để TẮT HOÀN TOÀN embeddings
             # Mem0 sẽ dùng text-based search thay vì vector search
             # KHÔNG BAO GIỜ gọi embeddings.create API
             # httpx transport đã được patch để redirect sang reverse proxy
-            from mem0.configs.main import MemoryConfig
+            from mem0.configs.memory import MemoryConfig
             
             config = MemoryConfig(
-                vector_store={
-                    "provider": "none"
-                },
-                embedder={
-                    "provider": "none"
-                },
+                vector_store=None,
+                embedder=None,
                 llm={
                     "provider": "openai",
                     "model": "gpt-4o-mini"
